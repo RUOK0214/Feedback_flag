@@ -41,6 +41,11 @@ final class EventScreen extends FlagScreen {
             String after = event.after().properties().getOrDefault(name, "—");
             if (!before.equals(after)) line(Component.literal(name + ": " + before + " → " + after));
         }
+        var flag = manager.book().flag(event.flagId());
+        if (flag != null && !flag.memo().isBlank()) {
+            line(Component.empty()); line(tr("memo_current"));
+            for (String paragraph : flag.memo().split("\n", -1)) line(Component.literal(paragraph));
+        }
         line(Component.empty()); line(tr("observation_note"));
         button(tr("back"), left, height - 28, (panelWidth - 6) / 2, this::onClose);
         button(tr("edit_title"), left + (panelWidth + 6) / 2, height - 28, (panelWidth - 6) / 2,
@@ -48,7 +53,11 @@ final class EventScreen extends FlagScreen {
                 .active = manager.book().flag(event.flagId()) != null;
         clampScroll();
     }
-    private void line(Component text) { lines.addAll(font.split(text, panelWidth - 12)); }
+    private void line(Component text) {
+        var wrapped = font.split(text, panelWidth - 12);
+        if (wrapped.isEmpty()) lines.add(FormattedCharSequence.EMPTY);
+        else lines.addAll(wrapped);
+    }
     private void clampScroll() { scroll = Math.clamp(scroll, 0, Math.max(0, lines.size() - Math.max(1, (height - 76) / 12))); }
     @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         scroll -= (int)Math.signum(vertical) * 3; clampScroll(); return true;

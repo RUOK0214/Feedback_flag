@@ -3,12 +3,14 @@ package io.github.ruok0214.feedbackflag;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
 import org.lwjgl.glfw.GLFW;
 
 /** Runs against a real integrated server, renderer and packet listener in an isolated test world. */
 @SuppressWarnings("UnstableApiUsage")
 public final class FlagClientGameTest implements FabricClientGameTest {
+    private static final String MEMO = "회로 입력\n리셋 전 확인";
     private static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     private static void command(ClientGameTestContext context, String command) {
         context.getInput().pressKey(GLFW.GLFW_KEY_T);
@@ -35,6 +37,34 @@ public final class FlagClientGameTest implements FabricClientGameTest {
         });
         context.waitTicks(3);
     }
+    private static MultiLineEditBox memoEditor(net.minecraft.client.Minecraft mc) {
+        return mc.gui.screen().children().stream().filter(MultiLineEditBox.class::isInstance)
+                .map(MultiLineEditBox.class::cast).findFirst().orElseThrow();
+    }
+    private static void writeMemo(ClientGameTestContext context) {
+        context.clickScreenButton("feedback_flag.memo_edit"); context.waitForScreen(MemoScreen.class);
+        context.getInput().typeChars("회로 입력"); context.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
+        context.getInput().typeChars("리셋 전 확인");
+        context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Multiline keyboard input"));
+        context.getInput().resizeWindow(854, 480); context.waitTick();
+        context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Memo draft survives resizing"));
+        context.takeScreenshot("memo-input");
+        context.clickScreenButton("feedback_flag.memo_apply"); context.waitForScreen(FlagEditScreen.class);
+        context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().getFirst().memo().isEmpty(), "Apply updates only the draft"));
+        context.clickScreenButton("feedback_flag.memo_edit"); context.waitForScreen(MemoScreen.class);
+        context.runOnClient(mc -> {
+            check(memoEditor(mc).getValue().equals(MEMO), "Applied draft reopens intact");
+            memoEditor(mc).setValue("가".repeat(FlagBook.MAX_MEMO + 1));
+            var apply = mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
+                    .map(net.minecraft.client.gui.components.Button.class::cast).findFirst().orElseThrow();
+            check(!apply.active, "Overlong memo cannot be applied");
+        });
+        context.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE); context.waitForScreen(FlagEditScreen.class);
+        context.clickScreenButton("feedback_flag.memo_edit"); context.waitForScreen(MemoScreen.class);
+        context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Escape discards only the subeditor changes"));
+        context.clickScreenButton("gui.cancel"); context.waitForScreen(FlagEditScreen.class);
+        context.getInput().resizeWindow(1000, 700); context.waitTick();
+    }
     @Override public void runTest(ClientGameTestContext context) {
         context.getInput().resizeWindow(1000, 700);
         try (var world = context.worldBuilder().create()) {
@@ -47,7 +77,9 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             context.runOnClient(mc -> check(FeedbackFlagClient.openMenu.isUnbound(), "Shortcut must start unbound"));
             aim(context, .5, 81.18, .5);
             command(context, "feedbackflag add");
+            writeMemo(context);
             edit(context, "Signal A", "56C8E8");
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().getFirst().memo().equals(MEMO), "Flag Save commits the memo"));
             world.getServer().runCommand("setblock 0 81 0 minecraft:lever[face=floor,powered=true]");
             context.waitFor(mc -> FeedbackFlagClient.manager.book().events().size() == 1);
             world.getServer().runCommand("setblock 0 81 0 minecraft:lever[face=floor,powered=false]");
@@ -57,6 +89,7 @@ public final class FlagClientGameTest implements FabricClientGameTest {
                 check(event.kind() == FlagBook.Kind.STATE, "Lever should be a state event");
                 check("false".equals(event.before().properties().get("powered")), "Old lever state");
                 check("true".equals(event.after().properties().get("powered")), "New lever state");
+                check(FeedbackFlagClient.manager.book().flags().getFirst().memo().equals(MEMO), "Server updates preserve memos");
             });
             context.setScreen(() -> null);
             aim(context, 2.5, 81, .5);
@@ -128,6 +161,20 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             context.runOnClient(mc -> mc.gui.setScreen(new FlagEditScreen(new DashboardScreen(FeedbackFlagClient.manager, null),
                     FeedbackFlagClient.manager, FeedbackFlagClient.manager.book().flags().getFirst().id())));
             context.waitTick(); context.takeScreenshot("flag-settings-ko");
+            context.clickScreenButton("feedback_flag.memo_edit"); context.waitForScreen(MemoScreen.class);
+            context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Saved memo reopens in Korean UI"));
+            context.takeScreenshot("memo-ko");
+            context.runOnClient(mc -> memoEditor(mc).setValue("취소할 변경"));
+            context.clickScreenButton("feedback_flag.memo_apply"); context.waitForScreen(FlagEditScreen.class);
+            context.clickScreenButton("gui.cancel");
+            context.runOnClient(mc -> {
+                check(FeedbackFlagClient.manager.book().flags().getFirst().memo().equals(MEMO), "Cancelling flag settings discards applied memo draft");
+                var manager = FeedbackFlagClient.manager;
+                mc.gui.setScreen(new EventScreen(new DashboardScreen(manager, null), manager, manager.book().events().getFirst()));
+            });
+            context.waitTick(); context.takeScreenshot("memo-event-detail-ko");
+            for (int i = 0; i < 4; i++) { context.getInput().scroll(-1); context.waitTick(); }
+            context.takeScreenshot("memo-event-detail-scrolled-ko");
             context.setScreen(() -> null);
             aim(context, .75, 82.65, .5);
             world.getConnection().waitForChunksRender();

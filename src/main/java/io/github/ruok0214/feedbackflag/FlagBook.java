@@ -5,6 +5,7 @@ import java.util.*;
 /** Game-independent history. Baselines are deliberately never persisted across observation gaps. */
 public final class FlagBook {
     public static final int MAX_FLAGS = 128, MAX_EVENTS = 5000, MAX_TEXT = 32;
+    public static final int MAX_MEMO = 1024;
     public record Target(String dimension, int x, int y, int z) {
         public Target { Objects.requireNonNull(dimension); }
         public String coordinates() { return x + ", " + y + ", " + z; }
@@ -16,11 +17,11 @@ public final class FlagBook {
             return block + new TreeMap<>(properties);
         }
     }
-    public record Flag(UUID id, Target target, String text, int color, boolean enabled,
+    public record Flag(UUID id, Target target, String text, String memo, int color, boolean enabled,
                        boolean watchBlocks, boolean watchProperties, long total, long lastTime) {
         public Flag {
             Objects.requireNonNull(id); Objects.requireNonNull(target);
-            text = cleanText(text); color &= 0xFFFFFF;
+            text = cleanText(text); memo = cleanMemo(memo); color &= 0xFFFFFF;
             total = Math.max(0, total); lastTime = Math.max(0, lastTime);
         }
     }
@@ -55,7 +56,7 @@ public final class FlagBook {
         Flag existing = at(target);
         if (existing != null) return existing;
         if (flags.size() >= MAX_FLAGS) throw new IllegalStateException("Flag limit reached");
-        Flag flag = new Flag(UUID.randomUUID(), target, text, 0x56C8E8, true, true, true, 0, 0);
+        Flag flag = new Flag(UUID.randomUUID(), target, text, "", 0x56C8E8, true, true, true, 0, 0);
         flags.put(flag.id(), flag); targets.put(target, flag.id());
         seed(target, initial); revision++;
         return flag;
@@ -63,7 +64,12 @@ public final class FlagBook {
     public void edit(UUID id, String text, int color, boolean active, boolean blocks, boolean properties) {
         Flag old = flags.get(id);
         if (old == null) return;
-        flags.put(id, new Flag(id, old.target(), text, color, active, blocks, properties, old.total(), old.lastTime()));
+        edit(id, text, old.memo(), color, active, blocks, properties);
+    }
+    public void edit(UUID id, String text, String memo, int color, boolean active, boolean blocks, boolean properties) {
+        Flag old = flags.get(id);
+        if (old == null) return;
+        flags.put(id, new Flag(id, old.target(), text, memo, color, active, blocks, properties, old.total(), old.lastTime()));
         revision++;
     }
     public void remove(UUID id) {
@@ -89,7 +95,7 @@ public final class FlagBook {
         Event event = new Event(++sequence, time, tick, flag.id(), target, flag.text(), flag.color(), kind, previous, next);
         events.addLast(event);
         while (events.size() > MAX_EVENTS) events.removeFirst();
-        flags.put(flag.id(), new Flag(flag.id(), target, flag.text(), flag.color(), flag.enabled(),
+        flags.put(flag.id(), new Flag(flag.id(), target, flag.text(), flag.memo(), flag.color(), flag.enabled(),
                 flag.watchBlocks(), flag.watchProperties(), flag.total() + 1, time));
         revision++;
         return event;
@@ -123,5 +129,19 @@ public final class FlagBook {
         value.codePoints().filter(c -> !Character.isISOControl(c) && c != 0x00A7)
                 .limit(MAX_TEXT).forEach(text::appendCodePoint);
         return text.toString().strip();
+    }
+    /** An absent memo in a 0.1.0 save becomes empty; newlines and Unicode are preserved. */
+    public static String cleanMemo(String value) {
+        String normalized = normalizeMemo(value);
+        int length = normalized.codePointCount(0, normalized.length());
+        return length <= MAX_MEMO ? normalized : normalized.substring(0, normalized.offsetByCodePoints(0, MAX_MEMO));
+    }
+    public static String normalizeMemo(String value) {
+        if (value == null) return "";
+        StringBuilder result = new StringBuilder();
+        value.replace("\r\n", "\n").replace('\r', '\n').replace("\t", "    ").codePoints()
+                .filter(c -> (c == '\n' || !Character.isISOControl(c)) && c != 0x00A7)
+                .forEach(result::appendCodePoint);
+        return result.toString();
     }
 }

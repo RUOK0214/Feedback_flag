@@ -16,7 +16,7 @@ public final class FlagBookTest {
         checks++; if (!condition) throw new AssertionError(message);
     }
     public static void main(String[] args) throws Exception {
-        recording(); pausesAndFilters(); observationGaps(); retention(); storage();
+        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos();
         System.out.println("Feedback Flag: " + checks + " assertions passed.");
     }
     private static void recording() {
@@ -80,6 +80,41 @@ public final class FlagBookTest {
         catch (IllegalStateException expected) { checks++; }
         check(FlagBook.cleanText("깃발😀".repeat(40)).codePointCount(0, FlagBook.cleanText("깃발😀".repeat(40)).length()) == 32, "Unicode label limit");
         check(FlagBook.cleanText("  A\nB§C  ").equals("ABC"), "unsafe label characters removed");
+    }
+    private static void memos() throws Exception {
+        var book = new FlagBook(); var first = book.add(TARGET, OFF, "이름 A");
+        var second = book.add(new FlagBook.Target("minecraft:overworld", 99, 64, 0), OFF, "이름 B");
+        String memo = "입력 회로 😀\n\n리셋 전에 확인\n";
+        check(first.memo().isEmpty(), "new flags start with an empty memo");
+        long revision = book.revision();
+        book.edit(first.id(), first.text(), memo, first.color(), true, true, true);
+        check(book.revision() > revision && book.flag(first.id()).memo().equals(memo), "memo edits mark the book dirty");
+        check(book.flag(first.id()).text().equals("이름 A") && book.flag(second.id()).memo().isEmpty(), "memo is independent of name and other flags");
+        book.observe(TARGET, ON, 1234, 1);
+        check(book.flag(first.id()).memo().equals(memo) && book.flag(first.id()).total() == 1, "block changes retain the memo");
+        book.edit(first.id(), "이름 변경", 0xFFFFFF, false, false, false);
+        check(book.flag(first.id()).memo().equals(memo), "renaming and toggling preserve the memo");
+        book.edit(second.id(), second.text(), "다른 플래그 메모", second.color(), true, true, true);
+        Path directory = Files.createTempDirectory(Path.of("build"), "memo-tests-");
+        var storage = new BookStorage(directory, "memo-world"); storage.save(book);
+        var restored = storage.load();
+        check(restored.data().equals(book.data()), "multiline Unicode memo survives restart");
+        check(restored.flag(second.id()).memo().equals("다른 플래그 메모"), "per-flag memos remain isolated after reload");
+        // The previous release's JSON has no memo property. Missing and null fields both migrate to empty.
+        var json = com.google.gson.JsonParser.parseString(Files.readString(storage.file())).getAsJsonObject();
+        json.getAsJsonArray("flags").get(0).getAsJsonObject().remove("memo");
+        json.getAsJsonArray("flags").get(1).getAsJsonObject().add("memo", com.google.gson.JsonNull.INSTANCE);
+        Files.writeString(storage.file(), json.toString());
+        var legacy = storage.load();
+        check(legacy.flag(first.id()).memo().isEmpty() && legacy.flag(second.id()).memo().isEmpty(), "old and null memo fields default to empty");
+        check(legacy.events().equals(book.events()) && legacy.flag(first.id()).text().equals("이름 변경"), "legacy migration preserves flags and history");
+        book.edit(first.id(), "이름 변경", "", first.color(), true, true, true);
+        storage.save(book);
+        check(storage.load().flag(first.id()).memo().isEmpty(), "clearing a memo persists");
+        check(book.flag(second.id()).memo().equals("다른 플래그 메모"), "clearing one memo does not touch another");
+        check(FlagBook.cleanMemo("A\r\n\r\nB\rC\tD\u0000§").equals("A\n\nB\nC    D"), "memo normalizes line endings and removes controls");
+        String longMemo = FlagBook.cleanMemo("😀".repeat(FlagBook.MAX_MEMO + 1));
+        check(longMemo.codePointCount(0, longMemo.length()) == FlagBook.MAX_MEMO && longMemo.endsWith("😀"), "memo limit does not split Unicode characters");
     }
     private static void storage() throws Exception {
         Path directory = Files.createTempDirectory(Path.of("build"), "flag-tests-");

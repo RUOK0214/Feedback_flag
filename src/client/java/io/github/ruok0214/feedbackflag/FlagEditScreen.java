@@ -15,7 +15,7 @@ public final class FlagEditScreen extends FlagScreen {
     private static final int[] COLORS = {0x56C8E8, 0x6EDD9B, 0xF2D16B, 0xF09B61, 0xEF758C, 0xBE9AF7, 0xFFFFFF, 0x8796AA};
     private final FlagManager manager;
     private final UUID id;
-    private String textValue, colorValue;
+    private String textValue, colorValue, memoValue;
     private boolean enabled, blocks, properties;
     private EditBox nameBox, colorBox;
     private Button saveButton;
@@ -25,6 +25,7 @@ public final class FlagEditScreen extends FlagScreen {
         super("edit_title", parent); this.manager = manager; this.id = id;
         var flag = manager.book().flag(id);
         textValue = flag.text(); colorValue = String.format(Locale.ROOT, "%06X", flag.color());
+        memoValue = flag.memo();
         enabled = flag.enabled(); blocks = flag.watchBlocks(); properties = flag.watchProperties();
     }
     @Override protected void init() {
@@ -42,10 +43,16 @@ public final class FlagEditScreen extends FlagScreen {
                     () -> colorBox.setValue(String.format(Locale.ROOT, "%06X", color)));
             swatch.setTooltip(Tooltip.create(Component.literal(String.format(Locale.ROOT, "#%06X", color))));
         }
+        int half = (panelWidth - 6) / 2;
         addRenderableWidget(Button.builder(tr("individual", state(enabled)), b -> {
             enabled = !enabled; b.setMessage(tr("individual", state(enabled)));
-        }).bounds(left, 112, panelWidth, 20).build());
-        int half = (panelWidth - 6) / 2;
+        }).bounds(left, 112, half, 20).build());
+        var memoButton = button(tr("memo_edit"), left + half + 6, 112, panelWidth - half - 6,
+                () -> minecraft.gui.setScreen(new MemoScreen(this, memoValue, value -> memoValue = value)));
+        String preview = memoValue.lines().filter(line -> !line.isBlank()).findFirst().orElse("");
+        int previewEnd = preview.offsetByCodePoints(0, Math.min(80, preview.codePointCount(0, preview.length())));
+        memoButton.setTooltip(Tooltip.create(memoValue.isBlank() ? tr("memo_empty")
+                : tr("memo_preview", preview.substring(0, previewEnd))));
         addRenderableWidget(Button.builder(tr("watch_blocks", state(blocks)), b -> {
             blocks = !blocks; b.setMessage(tr("watch_blocks", state(blocks)));
         }).bounds(left, 138, half, 20).build());
@@ -62,7 +69,7 @@ public final class FlagEditScreen extends FlagScreen {
         });
         saveButton = button(tr("save"), left, height - 28, half, () -> {
             if (!validColor()) return;
-            manager.book().edit(id, textValue, Integer.parseInt(colorValue.replace("#", ""), 16), enabled, blocks, properties);
+            manager.book().edit(id, textValue, memoValue, Integer.parseInt(colorValue.replace("#", ""), 16), enabled, blocks, properties);
             manager.save(); onClose();
         });
         saveButton.active = validColor();
