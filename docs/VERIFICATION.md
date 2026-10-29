@@ -2,6 +2,36 @@
 
 2026-10-29, Minecraft 26.2 / Fabric Loader 0.19.5 / Fabric API 0.160.0+26.2 / Java 25 / Windows / OpenGL에서 검증했습니다.
 
+## 0.1.3 상대 틱·태그·묶음·표시 방식
+
+- `gradlew.bat --offline build compileGametestJava` 통과. 모델 검증 **107개 항목 통과**.
+- Show Interaction 0.2.1과 함께 로딩한 실제 게임 통합 검사 통과.
+- 첫 변화 0틱, 같은 틱의 다른 플래그 0틱, 이후 정확한 틱 차이 확인. 필터·재접속·자동 기록 제거에도 원점 유지.
+- 전체 초기화 후 새 0틱, 개별 초기화 시 공통 기준 유지, 이전 저장 자료의 원점·태그·표시 방식 기본값 변환 확인.
+- 서버 `tick freeze` 중 실제 플래그 3개에서 발생한 변화 4건을 한 그룹으로 표시. '외 2개', 고유 플래그별 색상 3개, 펼친 개별 변화 4행 확인.
+- 묶음 펼치기/접기와 상세 열기, 작은 창에서 펼친 목록 스크롤, 최신 변경 시 그룹 식별 유지.
+- 한국어 태그 입력, 8개/24자 제한, 중복·대소문자 정리, 이름·메모와 독립 저장, 태그 변경의 기존 이력 적용, 삭제된 플래그의 마지막 태그 보관 확인.
+- 전체/사용자 태그/태그 없음 필터와 플래그 필터 교집합, 필터 후 상대 틱 기준 유지 검증.
+- 플래그 → 블록 윤곽선 → 둘 다 UI 전환 및 렌더링 확인. 블록만 표시할 때 숨은 플래그가 클릭을 가로채지 않음, 전체 투명도 적용 확인.
+- 콘크리트 16색 선택과 검은색 클릭 결과 확인. 색상은 기본 Minecraft 26.2 클라이언트 JAR의 `assets/minecraft/textures/block/*_concrete.png` 픽셀 RGB 평균을 반올림해 사용. 게임 이미지는 재배포하지 않습니다.
+- 854×480 및 1000×700의 세부 설정, 태그, 접힌/펼친 타임라인과 월드 표시를 실제 스크린샷으로 확인.
+
+![이름·콘크리트 16색·태그·메모](screenshots/flag-settings-ko.png)
+
+![같은 틱의 플래그를 색상으로 표시](screenshots/tick-groups-collapsed-ko.png)
+
+![틱 묶음을 펼친 변화 목록](screenshots/tick-groups-expanded-ko.png)
+
+![태그 선택](screenshots/tag-filter-ko.png)
+
+![태그를 걸러도 유지되는 상대 틱](screenshots/tag-input-timeline-ko.png)
+
+![블록 윤곽선만 표시](screenshots/display-blocks-ko.png)
+
+![플래그와 블록 윤곽선 함께 표시](screenshots/display-both-ko.png)
+
+아래는 이전 버전의 검증 이력입니다. 현재 화면은 0.1.3의 상대 틱과 틱별 묶음 방식을 사용합니다.
+
 ## 0.1.2 타임라인·단축키·메모 편집 개선
 
 - `gradlew.bat --offline build compileGametestJava` 통과. 모델 검증 **78개 항목 통과**.

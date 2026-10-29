@@ -16,7 +16,7 @@ public final class FlagBookTest {
         checks++; if (!condition) throw new AssertionError(message);
     }
     public static void main(String[] args) throws Exception {
-        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos(); resetsAndTicks();
+        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos(); resetsAndTicks(); relativeGroupsAndTags();
         System.out.println("Feedback Flag: " + checks + " assertions passed.");
     }
     private static void recording() {
@@ -155,8 +155,9 @@ public final class FlagBookTest {
         book.remove(b.id()); book.clearHistory(b.id());
         check(book.events().isEmpty(), "reset can remove a deleted flag's history");
         storage.save(book); check(storage.load().events().isEmpty(), "empty reset persists");
+        book.clearHistory(null); // Also clear the now-empty timeline's retained origin.
         revision = book.revision(); book.clearHistory(null);
-        check(book.revision() == revision, "empty reset is harmless");
+        check(book.revision() == revision, "repeated empty reset is harmless");
         book.observe(TARGET, OFF, 200000, 300);
         storage.save(book);
         var json = com.google.gson.JsonParser.parseString(Files.readString(storage.file())).getAsJsonObject();
@@ -167,6 +168,67 @@ public final class FlagBookTest {
         check(!legacy.events().getFirst().worldTick() && legacy.events().getFirst().tick() == 300, "old tick values retain their original clock provenance");
         check(!TimelineScale.of(legacy.events().reversed()).worldTicks(), "legacy ticks do not pretend to share the world clock");
         storage.save(legacy); check(storage.load().data().equals(legacy.data()), "legacy clock provenance survives migration");
+    }
+    private static void relativeGroupsAndTags() throws Exception {
+        var book = new FlagBook(); var a = book.add(TARGET, OFF, "Input");
+        var other = new FlagBook.Target("minecraft:overworld", 50, 64, 0);
+        var b = book.add(other, OFF, "Output");
+        check(a.tags().isEmpty() && book.displayMode() == FlagBook.DisplayMode.FLAGS, "new flags have no tags and default to flag display");
+        book.edit(a.id(), a.text(), "memo", FlagBook.parseTags(" Input, 회로 A, input, , 회로 A "), a.color(), true, true, true);
+        book.edit(b.id(), b.text(), "", List.of("Output", "회로 A"), b.color(), true, true, true);
+        check(book.flag(a.id()).tags().equals(List.of("Input", "회로 A")), "tags trim whitespace and deduplicate without case sensitivity");
+        check(FlagBook.validTags("😀".repeat(24)) && !FlagBook.validTags("😀".repeat(25)), "tag limit counts Unicode code points");
+        check(!FlagBook.validTags("1,2,3,4,5,6,7,8,9") && FlagBook.validTags("1,2,3,4,5,6,7,8,8"), "tag count limit applies to unique tags");
+        var first = book.observe(TARGET, ON, 100000, 9000);
+        var simultaneous = book.observe(other, ON, 200000, 9000);
+        book.observe(TARGET, OFF, 300000, 9000);
+        var later = book.observe(other, OFF, 0, 9020);
+        check(book.relativeTick(first) == 0 && book.relativeTick(simultaneous) == 0 && book.relativeTick(later) == 20, "first shared change defines zero despite wall time differences");
+        var groups = TickGroup.collect(book, null, null);
+        check(groups.size() == 2 && groups.getLast().events().size() == 3, "same tick is one expandable group");
+        check(groups.getLast().flags().size() == 2, "repeated transitions count one flag for the others label and color chips");
+        check(groups.getLast().events().getFirst().sequence() == 3, "all same-tick transitions remain accessible newest first");
+        var filtered = TickGroup.collect(book, null, "output");
+        check(filtered.size() == 2 && filtered.getLast().id() == groups.getLast().id(), "filter retains original group identity");
+        check(book.relativeTick(filtered.getFirst().representative()) == 20, "tag filtering does not rebase time");
+        check(TickGroup.collect(book, a.id(), "Output").isEmpty(), "tag and selected flag filters intersect");
+        check(TickGroup.collect(book, null, "").isEmpty(), "untagged filter excludes tagged flags");
+        book.edit(a.id(), "renamed", a.color(), false, true, true);
+        check(book.flag(a.id()).tags().equals(List.of("Input", "회로 A")), "name and recording edits preserve tags");
+        book.edit(a.id(), "renamed", "memo", List.of("Retagged"), a.color(), true, true, true);
+        check(TickGroup.collect(book, null, "Input").isEmpty() && TickGroup.collect(book, null, "Retagged").getFirst().events().size() == 2, "new tags apply to existing history");
+        book.remove(a.id());
+        check(TickGroup.collect(book, null, "Retagged").getFirst().events().size() == 2, "deleted flags retain their final tags in history");
+        check(book.availableTags().contains("Retagged") && !book.availableTags().contains("Input"), "tag options include deleted historical flags without obsolete live tags");
+        book.setDisplayMode(FlagBook.DisplayMode.BLOCKS);
+        check(!book.displayMode().flags() && book.displayMode().blocks(), "block-only mode hides markers and shows bounds");
+        book.setDisplayMode(book.displayMode().next());
+        check(book.displayMode().flags() && book.displayMode().blocks(), "both mode shows markers and bounds");
+        check(book.displayMode().next() == FlagBook.DisplayMode.FLAGS, "display mode cycles through three choices");
+        var storage = new BookStorage(Files.createTempDirectory(Path.of("build"), "group-tests-"), "groups");
+        storage.save(book); var restored = storage.load();
+        check(restored.data().equals(book.data()) && restored.relativeTick(later) == 20, "origin, tags and display preference survive restart");
+        var json = com.google.gson.JsonParser.parseString(Files.readString(storage.file())).getAsJsonObject();
+        json.addProperty("version", 2); json.remove("displayMode"); json.remove("tickOrigin"); json.remove("legacyTickOrigin");
+        for (var flag : json.getAsJsonArray("flags")) flag.getAsJsonObject().remove("tags");
+        for (var event : json.getAsJsonArray("events")) event.getAsJsonObject().remove("tags");
+        Files.writeString(storage.file(), json.toString()); var legacy = storage.load();
+        check(legacy.displayMode() == FlagBook.DisplayMode.FLAGS && legacy.flags().getFirst().tags().isEmpty(), "old saves migrate to flags and empty tags");
+        check(legacy.relativeTick(legacy.events().getFirst()) == 0 && legacy.relativeTick(legacy.events().getLast()) == 20, "old world-tick history derives its first relative origin");
+        book.clearHistory(b.id());
+        check(book.relativeTick(first) == 0, "individual clear retains shared origin");
+        book.observe(other, ON, 400000, 9030);
+        check(book.relativeTick(book.events().getLast()) == 30, "clearing one flag does not shift later comparisons");
+        for (int i = 1; i <= FlagBook.MAX_EVENTS + 1; i++) book.observe(other, i % 2 == 0 ? ON : OFF, i, 9030 + i);
+        check(book.relativeTick(book.events().getFirst()) > 0, "automatic pruning does not move zero");
+        storage.save(book); check(storage.load().data().tickOrigin().equals(9000L), "pruned origin survives restart");
+        book.clearHistory(null);
+        var afterReset = book.observe(other, ON, 800000, 20000);
+        check(book.relativeTick(afterReset) == 0 && book.displayMode() == FlagBook.DisplayMode.BOTH && book.flag(b.id()).tags().contains("Output"), "full reset starts a new zero and preserves tags and display");
+        book.observe(other, OFF, 800001, 19900);
+        book.observe(other, ON, 800002, 20000);
+        check(TickGroup.collect(book, null, null).size() == 3, "clock rollback never merges separate periods with the same tick number");
+        check(!TimelineScale.of(book.events().reversed()).worldTicks(), "clock rollback uses receipt order for the axis");
     }
     private static void storage() throws Exception {
         Path directory = Files.createTempDirectory(Path.of("build"), "flag-tests-");

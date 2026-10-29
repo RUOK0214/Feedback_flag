@@ -21,7 +21,8 @@ final class EventScreen extends FlagScreen {
         panelWidth = Math.min(620, width - 28); left = (width - panelWidth) / 2;
         lines.clear();
         line(Component.literal(event.text() + "  ·  #" + event.sequence()).withColor(event.color()));
-        line(tr(event.worldTick() ? "event_tick" : "legacy_event_tick", event.tick()));
+        line(tr(event.worldTick() ? "event_tick" : "legacy_event_tick", manager.book().relativeTick(event)));
+        line(tr("event_tags", manager.book().tags(event).isEmpty() ? tr("untagged").getString() : String.join(", ", manager.book().tags(event))));
         line(Component.literal(event.target().dimension() + " · " + event.target().coordinates()));
         line(tr("kind." + event.kind().name().toLowerCase(java.util.Locale.ROOT)));
         line(Component.empty());

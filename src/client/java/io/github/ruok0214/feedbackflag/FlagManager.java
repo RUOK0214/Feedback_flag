@@ -149,7 +149,7 @@ public final class FlagManager {
     public void openFlag(UUID id) { Minecraft.getInstance().gui.setScreen(new FlagEditScreen(new DashboardScreen(this, null), this, id)); }
     public FlagBook.Flag hitFlag() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || book().transparency() == 100) return null;
+        if (mc.player == null || book().transparency() == 100 || !book().displayMode().flags()) return null;
         Vec3 eye = mc.player.getEyePosition();
         Vec3 end = eye.add(mc.player.getViewVector(1).scale(mc.player.blockInteractionRange()));
         double nearest = mc.hitResult == null || mc.hitResult.getType() == HitResult.Type.MISS

@@ -24,6 +24,7 @@ public final class FlagClientGameTest implements FabricClientGameTest {
         context.runOnClient(mc -> {
             var boxes = mc.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).toList();
             boxes.get(0).setValue(name); boxes.get(1).setValue(color);
+            boxes.get(2).setValue(name.equals("Signal A") ? "입력, 공통" : name.equals("Block B") ? "출력, 공통" : name.equals("Placed C") ? "출력" : "");
         });
         context.clickScreenButton("feedback_flag.save");
         context.waitForScreen(DashboardScreen.class);
@@ -45,6 +46,16 @@ public final class FlagClientGameTest implements FabricClientGameTest {
         String label = net.minecraft.network.chat.Component.translatable(key).getString();
         return mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
                 .map(net.minecraft.client.gui.components.Button.class::cast).filter(b -> b.getMessage().getString().equals(label)).findFirst().orElseThrow();
+    }
+    private static String visibleLabel(ClientGameTestContext context, String prefix) {
+        return context.computeOnClient(mc -> mc.gui.screen().children().stream()
+                .filter(net.minecraft.client.gui.components.Button.class::isInstance)
+                .map(net.minecraft.client.gui.components.Button.class::cast)
+                .filter(b -> b.visible && b.getMessage().getString().startsWith(prefix))
+                .findFirst().orElseThrow().getMessage().getString());
+    }
+    private static void openTagFilter(ClientGameTestContext context) {
+        context.clickScreenButton(visibleLabel(context, "태그:")); context.waitForScreen(TagFilterScreen.class);
     }
     private static void assignKey(ClientGameTestContext context, int index, int key) {
         context.runOnClient(mc -> {
@@ -69,6 +80,16 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             check(!button(mc, "feedback_flag.save").active, "Overlong inline memo cannot be saved");
             memoEditor(mc).setValue(MEMO);
             check(button(mc, "feedback_flag.save").active, "Valid memo can be saved");
+            var swatches = mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
+                    .map(net.minecraft.client.gui.components.Button.class::cast).filter(b -> b.getMessage().getString().equals("■")).toList();
+            check(swatches.size() == 16, "Sixteen concrete color choices are visible");
+            swatches.getLast().onPress(new net.minecraft.client.input.KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
+            var boxes = mc.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).toList();
+            check(boxes.get(1).getValue().equals("080A0F"), "Black concrete swatch selects the texture color");
+            boxes.get(2).setValue("1,2,3,4,5,6,7,8,9");
+            check(!button(mc, "feedback_flag.save").active, "Too many tags disable Save");
+            boxes.get(2).setValue("입력, 공통");
+            check(button(mc, "feedback_flag.save").active, "Valid tags enable Save");
         });
         context.getInput().resizeWindow(1000, 700); context.waitTick();
     }
@@ -94,6 +115,7 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             context.runOnClient(mc -> {
                 var event = FeedbackFlagClient.manager.book().events().getFirst();
                 check(event.kind() == FlagBook.Kind.STATE, "Lever should be a state event");
+                check(FeedbackFlagClient.manager.book().relativeTick(event) == 0, "First real server change displays zero ticks");
                 check("false".equals(event.before().properties().get("powered")), "Old lever state");
                 check("true".equals(event.after().properties().get("powered")), "New lever state");
                 check(FeedbackFlagClient.manager.book().flags().getFirst().memo().equals(MEMO), "Server updates preserve memos");
@@ -105,12 +127,8 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             context.waitFor(mc -> FeedbackFlagClient.manager.book().events().size() == 3);
             context.takeScreenshot("dashboard-en");
             context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().events().getLast().kind() == FlagBook.Kind.BLOCK, "Replacement event"));
-            String eventButton = context.computeOnClient(mc -> mc.gui.screen().children().stream()
-                    .filter(net.minecraft.client.gui.components.Button.class::isInstance)
-                    .map(net.minecraft.client.gui.components.Button.class::cast)
-                    .filter(b -> b.visible && b.getMessage().getString().matches("[0-9]+ ticks.*"))
-                    .findFirst().orElseThrow().getMessage().getString());
-            context.clickScreenButton(eventButton);
+            context.clickScreenButton(visibleLabel(context, "▶ "));
+            context.clickScreenButton(visibleLabel(context, "↳ "));
             context.waitForScreen(EventScreen.class);
             context.waitTick(); context.takeScreenshot("event-detail-en");
             context.setScreen(() -> null);
@@ -209,6 +227,41 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             world.getServer().runCommand("setblock 2 80 0 minecraft:emerald_block");
             context.waitFor(mc -> FeedbackFlagClient.manager.book().events().getLast().after().block().equals("minecraft:emerald_block"));
             context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().events().getLast().tick() == frozenTick, "Client ticks do not advance a frozen world clock"));
+            world.getServer().runCommand("setblock 0 81 0 minecraft:lever[face=floor,powered=true]");
+            world.getServer().runCommand("setblock -2 80 0 minecraft:redstone_block");
+            world.getConnection().waitForClientboundPackets(); context.waitTicks(3);
+            context.runOnClient(mc -> {
+                var book = FeedbackFlagClient.manager.book(); var group = TickGroup.collect(book, null, null).getFirst();
+                check(group.representative().tick() == frozenTick && group.flags().size() == 3 && group.events().size() == 4, "Three flags and four changes form one actual game-tick group");
+                check(book.relativeTick(group.representative()) == frozenTick - book.data().tickOrigin(), "Group uses shared relative origin");
+            });
+            context.getInput().resizeWindow(1000, 700);
+            context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+            context.waitTick(); context.takeScreenshot("tick-groups-collapsed-ko");
+            String collapsed = visibleLabel(context, "▶ ");
+            check(collapsed.contains("외 2개") && !collapsed.contains("Signal A") && !collapsed.contains("Block B"), "Collapsed group shows count without flag names");
+            context.clickScreenButton(collapsed); context.waitTick(); context.takeScreenshot("tick-groups-expanded-ko");
+            context.clickScreenButton(visibleLabel(context, "↳ ")); context.waitForScreen(EventScreen.class);
+            context.clickScreenButton("feedback_flag.back"); context.waitForScreen(DashboardScreen.class);
+            context.clickScreenButton(visibleLabel(context, "▼ ")); context.waitTick();
+            openTagFilter(context); context.takeScreenshot("tag-filter-ko");
+            context.clickScreenButton("입력"); context.waitForScreen(DashboardScreen.class);
+            context.waitTick(); context.takeScreenshot("tag-input-timeline-ko");
+            context.runOnClient(mc -> {
+                var book = FeedbackFlagClient.manager.book(); var group = TickGroup.collect(book, null, "입력").getFirst();
+                check(group.flags().size() == 1 && book.relativeTick(group.representative()) != 0, "Tag filter retains global relative tick");
+            });
+            context.clickScreenButton(visibleLabel(context, "▶ "));
+            check(visibleLabel(context, "↳ ").contains("Signal A"), "Input tag expands only its matching flag");
+            openTagFilter(context); context.clickScreenButton("feedback_flag.untagged"); context.waitForScreen(DashboardScreen.class);
+            context.runOnClient(mc -> check(mc.gui.screen().children().stream()
+                    .filter(net.minecraft.client.gui.components.Button.class::isInstance).map(net.minecraft.client.gui.components.Button.class::cast)
+                    .noneMatch(b -> b.visible && (b.getMessage().getString().startsWith("▶ ") || b.getMessage().getString().startsWith("↳ "))), "Untagged filter hides unrelated records"));
+            openTagFilter(context); context.clickScreenButton("feedback_flag.all_tags"); context.waitForScreen(DashboardScreen.class);
+            context.getInput().resizeWindow(854, 480); context.waitTick();
+            context.clickScreenButton(visibleLabel(context, "▶ "));
+            context.getInput().scroll(-2); context.waitTick(); context.takeScreenshot("expanded-small-window-ko");
+            check(visibleLabel(context, "↳ ").startsWith("↳ "), "Expanded children remain reachable in a small window");
             world.getServer().runCommand("tick unfreeze");
             var firstId = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().flags().getFirst().id());
             int beforeReset = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().events().size());
@@ -240,7 +293,24 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             });
             world.getServer().runCommand("setblock 2 80 0 minecraft:stone");
             context.waitFor(mc -> FeedbackFlagClient.manager.book().events().size() == 1);
-            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().get(1).total() == 1, "Recording resumes after reset"));
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().get(1).total() == 1 && FeedbackFlagClient.manager.book().relativeTick(FeedbackFlagClient.manager.book().events().getFirst()) == 0, "Recording resumes from zero after reset"));
+            for (var mode : new FlagBook.DisplayMode[]{FlagBook.DisplayMode.BLOCKS, FlagBook.DisplayMode.BOTH, FlagBook.DisplayMode.FLAGS}) {
+                context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+                context.clickScreenButton(visibleLabel(context, "표시:"));
+                context.setScreen(() -> null); aim(context, .75, 82.1, .5);
+                context.runOnClient(mc -> {
+                    check(FeedbackFlagClient.manager.book().displayMode() == mode, "Display button cycles mode");
+                    var markers = FeedbackFlagClient.extractMarkers();
+                    check(!markers.isEmpty() && markers.stream().allMatch(m -> m.drawFlag() == mode.flags() && m.drawBlock() == mode.blocks()), "Renderer honors both independent display choices");
+                    if (mode == FlagBook.DisplayMode.BLOCKS) check(FeedbackFlagClient.manager.hitFlag() == null, "Hidden flag geometry cannot intercept clicks");
+                });
+                world.getConnection().waitForChunksRender(); context.waitTicks(5); context.takeScreenshot("display-" + mode.name().toLowerCase() + "-ko");
+            }
+            context.runOnClient(mc -> {
+                FeedbackFlagClient.manager.book().setTransparency(100);
+                check(FeedbackFlagClient.extractMarkers().isEmpty(), "Global transparency also hides outlines");
+                FeedbackFlagClient.manager.book().setTransparency(15);
+            });
             context.setScreen(() -> null);
             aim(context, .75, 82.65, .5);
             world.getConnection().waitForChunksRender();

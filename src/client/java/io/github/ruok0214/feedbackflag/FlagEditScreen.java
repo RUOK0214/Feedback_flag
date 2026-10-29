@@ -13,10 +13,9 @@ import java.util.Locale;
 import java.util.UUID;
 
 public final class FlagEditScreen extends FlagScreen {
-    private static final int[] COLORS = {0x56C8E8, 0x6EDD9B, 0xF2D16B, 0xF09B61, 0xEF758C, 0xBE9AF7, 0xFFFFFF, 0x8796AA};
     private final FlagManager manager;
     private final UUID id;
-    private String textValue, colorValue, memoValue;
+    private String textValue, colorValue, memoValue, tagsValue;
     private boolean enabled, blocks, properties;
     private EditBox nameBox, colorBox;
     private MultiLineEditBox memoBox;
@@ -27,7 +26,7 @@ public final class FlagEditScreen extends FlagScreen {
         super("edit_title", parent); this.manager = manager; this.id = id;
         var flag = manager.book().flag(id);
         textValue = flag.text(); colorValue = String.format(Locale.ROOT, "%06X", flag.color());
-        memoValue = flag.memo();
+        memoValue = flag.memo(); tagsValue = String.join(", ", flag.tags());
         enabled = flag.enabled(); blocks = flag.watchBlocks(); properties = flag.watchProperties();
     }
     @Override protected void init() {
@@ -40,27 +39,32 @@ public final class FlagEditScreen extends FlagScreen {
         colorBox = addRenderableWidget(new EditBox(font, left, 84, 74, 20, tr("color")));
         colorBox.setMaxLength(7); colorBox.setValue(colorValue);
         colorBox.setResponder(value -> { colorValue = value; updateSave(); });
-        int swatchWidth = Math.min(26, (settingsWidth - 82) / COLORS.length);
-        for (int i = 0; i < COLORS.length; i++) {
-            final int color = COLORS[i];
-            var swatch = button(Component.literal("■").withColor(color), left + 82 + i * swatchWidth, 84, swatchWidth - 2,
-                    () -> colorBox.setValue(String.format(Locale.ROOT, "%06X", color)));
-            swatch.setTooltip(Tooltip.create(Component.literal(String.format(Locale.ROOT, "#%06X", color))));
+        int swatchWidth = Math.min(26, (settingsWidth - 82) / 8);
+        for (int i = 0; i < ConcretePalette.COLORS.size(); i++) {
+            var color = ConcretePalette.COLORS.get(i);
+            var swatch = addRenderableWidget(Button.builder(Component.literal("■").withColor(color.rgb()),
+                    ignored -> colorBox.setValue(String.format(Locale.ROOT, "%06X", color.rgb())))
+                    .bounds(left + 82 + (i % 8) * swatchWidth, 82 + (i / 8) * 20, swatchWidth - 2, 16).build());
+            swatch.setTooltip(Tooltip.create(color.label().copy().append(String.format(Locale.ROOT, " · #%06X", color.rgb()))));
         }
         int half = (panelWidth - 6) / 2;
         addRenderableWidget(Button.builder(tr("individual", state(enabled)), b -> {
             enabled = !enabled; b.setMessage(tr("individual", state(enabled)));
-        }).bounds(left, 112, settingsWidth, 20).build());
+        }).bounds(left, 124, settingsWidth, 20).tooltip(Tooltip.create(tr("individual_hint"))).build());
         int settingHalf = (settingsWidth - 6) / 2;
         addRenderableWidget(Button.builder(tr("watch_blocks", state(blocks)), b -> {
             blocks = !blocks; b.setMessage(tr("watch_blocks", state(blocks)));
-        }).bounds(left, 138, settingHalf, 20).build());
+        }).bounds(left, 148, settingHalf, 20).tooltip(Tooltip.create(tr("watch_blocks_hint"))).build());
         addRenderableWidget(Button.builder(tr("watch_states", state(properties)), b -> {
             properties = !properties; b.setMessage(tr("watch_states", state(properties)));
-        }).bounds(left + settingHalf + 6, 138, settingsWidth - settingHalf - 6, 20).build());
-        memoBox = addRenderableWidget(MultiLineEditBox.builder().setX(memoLeft).setY(44)
+        }).bounds(left + settingHalf + 6, 148, settingsWidth - settingHalf - 6, 20).tooltip(Tooltip.create(tr("watch_states_hint"))).build());
+        var tagsBox = addRenderableWidget(new EditBox(font, memoLeft, 44, memoWidth, 20, tr("tags")));
+        tagsBox.setMaxLength(512); tagsBox.setValue(tagsValue);
+        tagsBox.setResponder(value -> { tagsValue = value; updateSave(); });
+        tagsBox.setTooltip(Tooltip.create(tr("tags_hint")));
+        memoBox = addRenderableWidget(MultiLineEditBox.builder().setX(memoLeft).setY(92)
                 .setPlaceholder(tr("memo_placeholder")).setShowBackground(true).setShowDecorations(false)
-                .build(font, memoWidth, Math.max(42, height - 114), tr("memo_title")));
+                .build(font, memoWidth, Math.max(42, height - 162), tr("memo_title")));
         memoBox.setCharacterLimit(FlagBook.MAX_MEMO * 2);
         memoBox.setValue(memoValue);
         memoBox.setValueListener(value -> { memoValue = value; updateSave(); });
@@ -73,8 +77,8 @@ public final class FlagEditScreen extends FlagScreen {
             }, tr("delete_title"), tr("delete_hint")));
         });
         saveButton = button(tr("save"), left, height - 28, half, () -> {
-            if (!validColor() || memoLength() > FlagBook.MAX_MEMO) return;
-            manager.book().edit(id, textValue, memoValue, Integer.parseInt(colorValue.replace("#", ""), 16), enabled, blocks, properties);
+            if (!validColor() || memoLength() > FlagBook.MAX_MEMO || !FlagBook.validTags(tagsValue)) return;
+            manager.book().edit(id, textValue, memoValue, FlagBook.parseTags(tagsValue), Integer.parseInt(colorValue.replace("#", ""), 16), enabled, blocks, properties);
             manager.save(); onClose();
         });
         updateSave();
@@ -85,16 +89,18 @@ public final class FlagEditScreen extends FlagScreen {
         String normalized = FlagBook.normalizeMemo(memoValue);
         return normalized.codePointCount(0, normalized.length());
     }
-    private void updateSave() { if (saveButton != null) saveButton.active = validColor() && memoLength() <= FlagBook.MAX_MEMO; }
+    private void updateSave() { if (saveButton != null) saveButton.active = validColor() && memoLength() <= FlagBook.MAX_MEMO && FlagBook.validTags(tagsValue); }
     @Override public void extractRenderState(GuiGraphicsExtractor g, int x, int y, float delta) {
         super.extractRenderState(g, x, y, delta);
         text(g, tr("text"), left, 31, settingsWidth, MUTED);
         text(g, tr(validColor() ? "color" : "invalid_color"), left, 71, settingsWidth, validColor() ? MUTED : 0xFFFF8888);
-        text(g, tr("memo_title"), memoLeft, 31, memoWidth, WHITE);
+        text(g, tr("tags"), memoLeft, 31, memoWidth, MUTED);
+        text(g, tr(FlagBook.validTags(tagsValue) ? "memo_title" : "invalid_tags"), memoLeft, 78, memoWidth,
+                FlagBook.validTags(tagsValue) ? WHITE : 0xFFFF8888);
         text(g, tr("memo_length", memoLength(), FlagBook.MAX_MEMO), memoLeft, height - 67, memoWidth,
                 memoLength() <= FlagBook.MAX_MEMO ? MUTED : 0xFFFF8888);
         var flag = manager.book().flag(id);
-        if (flag != null) text(g, tr("flag_summary", flag.target().coordinates(), tr(manager.status(flag)), flag.total()), left, 168, settingsWidth, MUTED);
+        if (flag != null) text(g, tr("flag_summary", flag.target().coordinates(), tr(manager.status(flag)), flag.total()), left, 176, settingsWidth, MUTED);
         if (height >= 278) {
             int rgb = validColor() ? Integer.parseInt(colorValue.replace("#", ""), 16) : 0xFFFFFF;
             g.fill(left + 2, 193, left + 5, 219, 0xFF000000 | rgb);

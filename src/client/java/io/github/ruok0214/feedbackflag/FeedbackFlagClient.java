@@ -25,7 +25,8 @@ public final class FeedbackFlagClient implements ClientModInitializer {
     public static FlagManager manager;
     public static KeyMapping openMenu, placeFlag;
     private boolean menuRequested, addRequested, placementRequested;
-    private record Marker(AABB pole, AABB cloth, AABB block, Vec3 labelPos, String label, int color, boolean pulse) { }
+    record Marker(AABB pole, AABB cloth, AABB block, Vec3 labelPos, String label, int color,
+                  boolean pulse, boolean drawFlag, boolean drawBlock) { }
     private volatile List<Marker> markers = List.of();
 
     @Override public void onInitializeClient() {
@@ -62,16 +63,18 @@ public final class FeedbackFlagClient implements ClientModInitializer {
         LevelRenderEvents.BEFORE_GIZMOS.register(context -> {
             try (var ignored = context.levelRenderer().collectPerFrameRenderThreadGizmos()) {
                 for (var marker : markers) {
-                    Gizmos.cuboid(marker.pole(), GizmoStyle.fill(marker.color()));
-                    Gizmos.cuboid(marker.cloth(), GizmoStyle.strokeAndFill(marker.color(), 1.5f, marker.color()));
-                    if (marker.pulse()) Gizmos.cuboid(marker.block(), GizmoStyle.stroke(marker.color(), 3));
-                    if (!marker.label().isBlank()) Gizmos.billboardText(marker.label(), marker.labelPos(),
-                            TextGizmo.Style.forColorAndCentered(marker.color()).withScale(.25f));
+                    if (marker.drawFlag()) {
+                        Gizmos.cuboid(marker.pole(), GizmoStyle.fill(marker.color()));
+                        Gizmos.cuboid(marker.cloth(), GizmoStyle.strokeAndFill(marker.color(), 1.5f, marker.color()));
+                        if (!marker.label().isBlank()) Gizmos.billboardText(marker.label(), marker.labelPos(),
+                                TextGizmo.Style.forColorAndCentered(marker.color()).withScale(.25f));
+                    }
+                    if (marker.drawBlock()) Gizmos.cuboid(marker.block(), GizmoStyle.stroke(marker.color(), marker.pulse() ? 3 : 2)).setAlwaysOnTop();
                 }
             }
         });
     }
-    private List<Marker> extractMarkers() {
+    static List<Marker> extractMarkers() {
         Minecraft mc = Minecraft.getInstance();
         var book = manager.book();
         if (mc.level == null || mc.player == null || book == null || mc.gui.hud.isHidden()) return List.of();
@@ -88,7 +91,8 @@ public final class FeedbackFlagClient implements ClientModInitializer {
             result.add(new Marker(new AABB(t.x() + .48, t.y() + 1, t.z() + .48, t.x() + .52, t.y() + 1.85, t.z() + .52),
                     new AABB(t.x() + .52, t.y() + 1.48, t.z() + .48, t.x() + 1.05, t.y() + 1.82, t.z() + .52),
                     new AABB(FlagManager.pos(t)).inflate(.004), new Vec3(t.x() + .5, t.y() + 2.04, t.z() + .5),
-                    flag.text(), color, active && now - flag.lastTime() >= 0 && now - flag.lastTime() < 1000));
+                    flag.text(), color, active && flag.lastTime() != 0 && now - flag.lastTime() >= 0 && now - flag.lastTime() < 1000,
+                    book.displayMode().flags(), book.displayMode().blocks()));
         }
         return List.copyOf(result);
     }
