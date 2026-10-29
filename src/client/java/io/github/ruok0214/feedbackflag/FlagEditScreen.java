@@ -40,8 +40,8 @@ public final class FlagEditScreen extends FlagScreen {
         colorBox.setMaxLength(7); colorBox.setValue(colorValue);
         colorBox.setResponder(value -> { colorValue = value; updateSave(); });
         int swatchWidth = Math.min(26, (settingsWidth - 82) / 8);
-        for (int i = 0; i < ConcretePalette.COLORS.size(); i++) {
-            var color = ConcretePalette.COLORS.get(i);
+        for (int i = 0; i < BasicPalette.COLORS.size(); i++) {
+            var color = BasicPalette.COLORS.get(i);
             var swatch = addRenderableWidget(Button.builder(Component.literal("■").withColor(color.rgb()),
                     ignored -> colorBox.setValue(String.format(Locale.ROOT, "%06X", color.rgb())))
                     .bounds(left + 82 + (i % 8) * swatchWidth, 82 + (i / 8) * 20, swatchWidth - 2, 16).build());

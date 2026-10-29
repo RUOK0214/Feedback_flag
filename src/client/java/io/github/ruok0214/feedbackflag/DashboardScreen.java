@@ -23,7 +23,7 @@ public final class DashboardScreen extends FlagScreen {
     private List<Row> rows = List.of();
     private final Set<Long> expanded = new HashSet<>();
     private final List<Button> flagButtons = new ArrayList<>(), eventButtons = new ArrayList<>();
-    private Button flagPrevious, flagNext, eventPrevious, eventNext, clearHistory, tagButton;
+    private Button flagPrevious, flagNext, eventPrevious, eventNext, clearHistory, tagButton, removeAll;
     private TimelineScale scale = TimelineScale.of(List.of());
     private int clearWidth;
     private long revision = -1;
@@ -35,7 +35,7 @@ public final class DashboardScreen extends FlagScreen {
         flagButtons.clear(); eventButtons.clear();
         leftWidth = Math.max(104, (width - 30) / 3);
         rightX = leftWidth + 20; rightWidth = width - rightX - 10;
-        int actionWidth = (width - 28) / 3;
+        int actionWidth = (width - 32) / 4;
         addRenderableWidget(Button.builder(tr("global", state(manager.book().enabled())), b -> {
             manager.book().setEnabled(!manager.book().enabled()); manager.save();
             b.setMessage(tr("global", state(manager.book().enabled())));
@@ -43,6 +43,8 @@ public final class DashboardScreen extends FlagScreen {
         button(tr("place"), 14 + actionWidth, 29, actionWidth, manager::startPlacing);
         button(tr("keys"), 18 + 2 * actionWidth, 29, actionWidth,
                 () -> minecraft.gui.setScreen(new KeySettingsScreen(this)));
+        button(tr("visual_settings"), 22 + 3 * actionWidth, 29, actionWidth,
+                () -> minecraft.gui.setScreen(new VisualSettingsScreen(this, manager)));
         addRenderableWidget(new AbstractSliderButton(10, 54, leftWidth, 20, Component.empty(), manager.book().transparency() / 100d) {
             { updateMessage(); }
             @Override protected void updateMessage() { setMessage(tr("transparency", (int)Math.round(value * 100))); }
@@ -63,6 +65,11 @@ public final class DashboardScreen extends FlagScreen {
                     minecraft.gui.setScreen(this);
                 }, tr(filter == null ? "clear_history_title" : "clear_flag_history_title"), tr("clear_history_hint"))));
         clearHistory.setTooltip(Tooltip.create(tr("clear_filter_hint")));
+        removeAll = addRenderableWidget(Button.builder(tr("remove_all"), ignored -> minecraft.gui.setScreen(new ConfirmScreen(confirmed -> {
+            if (confirmed) { manager.removeAllFlags(); flagPage = 0; }
+            minecraft.gui.setScreen(this);
+        }, tr("remove_all_title", manager.book().flags().size()), tr("remove_all_hint"))))
+                .bounds(10 + leftWidth - 64, 104, 64, 17).build());
         flagRows = Math.max(1, (height - 151) / 27);
         eventRows = Math.max(1, (height - 184) / 26);
         for (int i = 0; i < flagRows; i++) {
@@ -107,6 +114,7 @@ public final class DashboardScreen extends FlagScreen {
         visibleGroups = List.copyOf(pageGroups.values());
         scale = TimelineScale.of(visibleGroups.stream().map(TickGroup::representative).toList());
         tagButton.setMessage(tagLabel());
+        removeAll.active = !flags.isEmpty();
         clearHistory.active = manager.book().events().stream().anyMatch(e -> filter == null || filter.equals(e.flagId()))
                 || flags.stream().anyMatch(f -> (filter == null || filter.equals(f.id())) && f.total() != 0);
         for (int i = 0; i < flagButtons.size(); i++) {
@@ -169,7 +177,7 @@ public final class DashboardScreen extends FlagScreen {
         var summary = error == null ? tr("summary", active, flags.size(), manager.book().events().size()) : tr(error);
         text(g, summary, rightX, 86, rightWidth - clearWidth - 6, error == null ? MUTED : 0xFFFF8888);
         if (x >= rightX && x < rightX + rightWidth - clearWidth && y >= 80 && y < 100) g.setTooltipForNextFrame(summary, x, y);
-        text(g, tr("flags"), 10, 109, leftWidth, WHITE);
+        text(g, tr("flags_short"), 10, 109, leftWidth - 68, WHITE);
         text(g, tr(filter == null ? "timeline" : "filtered_timeline"), rightX, 109, rightWidth, WHITE);
         if (flags.isEmpty()) g.textWithWordWrap(font, tr("no_flags"), 12, 128, leftWidth - 4, MUTED);
         else for (int i = 0; i < flagRows; i++) {

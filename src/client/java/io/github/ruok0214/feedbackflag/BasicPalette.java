@@ -3,10 +3,10 @@ package io.github.ruok0214.feedbackflag;
 import net.minecraft.network.chat.Component;
 import java.util.List;
 
-/** Rounded mean RGB of the sixteen vanilla 26.2 concrete block textures. */
-final class ConcretePalette {
+/** The standard sixteen color choices. */
+final class BasicPalette {
     record Color(String name, int rgb) {
-        Component label() { return Component.translatable("block.minecraft." + name + "_concrete"); }
+        Component label() { return Component.translatable("feedback_flag.color." + name); }
     }
     static final List<Color> COLORS = List.of(
             new Color("white", 0xCFD5D6), new Color("orange", 0xE06101),
@@ -17,5 +17,5 @@ final class ConcretePalette {
             new Color("purple", 0x64209C), new Color("blue", 0x2D2F8F),
             new Color("brown", 0x603C20), new Color("green", 0x495B24),
             new Color("red", 0x8E2121), new Color("black", 0x080A0F));
-    private ConcretePalette() { }
+    private BasicPalette() { }
 }

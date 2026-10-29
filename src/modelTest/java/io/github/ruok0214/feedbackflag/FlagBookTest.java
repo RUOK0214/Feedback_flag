@@ -16,7 +16,7 @@ public final class FlagBookTest {
         checks++; if (!condition) throw new AssertionError(message);
     }
     public static void main(String[] args) throws Exception {
-        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos(); resetsAndTicks(); relativeGroupsAndTags();
+        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos(); resetsAndTicks(); relativeGroupsAndTags(); visualSettingsAndRemoval();
         System.out.println("Feedback Flag: " + checks + " assertions passed.");
     }
     private static void recording() {
@@ -229,6 +229,48 @@ public final class FlagBookTest {
         book.observe(other, ON, 800002, 20000);
         check(TickGroup.collect(book, null, null).size() == 3, "clock rollback never merges separate periods with the same tick number");
         check(!TimelineScale.of(book.events().reversed()).worldTicks(), "clock rollback uses receipt order for the axis");
+    }
+    private static void visualSettingsAndRemoval() throws Exception {
+        var book = new FlagBook(); var first = book.add(TARGET, OFF, "First");
+        var nether = new FlagBook.Target("minecraft:the_nether", 12, 64, -9);
+        var second = book.add(nether, OFF, "Second");
+        check(book.visuals().equals(VisualSettings.DEFAULT), "old geometry and outline settings are the default");
+        var visuals = new VisualSettings(4.5, 1.75, .6, .3, -.4, false, false);
+        long revision = book.revision(); book.setVisuals(visuals);
+        check(book.revision() > revision && book.visuals().equals(visuals), "appearance changes are persisted");
+        revision = book.revision(); book.setVisuals(visuals);
+        check(book.revision() == revision, "identical appearance does not dirty the book");
+        var bounded = new VisualSettings(999, -20, -10, 9, 10, true, true);
+        check(bounded.outlineWidth() == 8 && bounded.flagScale() == .25 && bounded.offsetX() == -2
+                && bounded.offsetY() == 3 && bounded.offsetZ() == 2, "appearance input stays within supported bounds");
+        var invalid = new VisualSettings(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NaN, Double.NaN, true, true);
+        check(invalid.equals(VisualSettings.DEFAULT), "nonfinite geometry input falls back safely");
+        book.edit(first.id(), first.text(), "memo", List.of("final tag"), first.color(), true, true, true);
+        book.observe(TARGET, ON, 100, 1000); book.observe(nether, ON, 101, 1005);
+        book.setDisplayMode(FlagBook.DisplayMode.BOTH); book.setTransparency(60);
+        var storage = new BookStorage(Files.createTempDirectory(Path.of("build"), "appearance-tests-"), "world");
+        storage.save(book); check(storage.load().data().equals(book.data()), "all appearance settings survive restart");
+        var json = com.google.gson.JsonParser.parseString(Files.readString(storage.file())).getAsJsonObject();
+        json.addProperty("version", 3); json.remove("visuals");
+        Files.writeString(storage.file(), json.toString()); var legacy = storage.load();
+        check(legacy.visuals().equals(VisualSettings.DEFAULT) && legacy.flags().equals(book.flags())
+                && legacy.events().equals(book.events()), "0.1.3 histories load with default appearance and intact data");
+        book.remove(first.id()); // A previously removed flag's records must also stay.
+        book.edit(second.id(), second.text(), "memo B", List.of("later tag"), second.color(), true, true, true);
+        int historySize = book.events().size(); long sequence = book.data().sequence(); Long origin = book.data().tickOrigin();
+        revision = book.revision(); book.removeAllFlags();
+        check(book.flags().isEmpty() && book.at(nether) == null && book.baseline(nether) == null, "remove-all clears flags, lookup and baselines across dimensions");
+        check(book.events().size() == historySize && book.data().sequence() == sequence && book.data().tickOrigin().equals(origin), "remove-all retains history and relative origin");
+        check(book.events().getFirst().tags().equals(List.of("final tag")) && book.events().getLast().tags().equals(List.of("later tag")), "remove-all preserves final tags including already deleted flags");
+        check(book.visuals().equals(visuals) && book.displayMode() == FlagBook.DisplayMode.BOTH && book.transparency() == 60, "remove-all preserves world preferences");
+        check(book.revision() > revision && book.observe(nether, OFF, 102, 1006) == null, "deleted targets stop observing and removal marks storage dirty");
+        storage.save(book); check(storage.load().data().equals(book.data()), "remove-all survives restart without losing history");
+        revision = book.revision(); book.removeAllFlags();
+        check(book.revision() == revision, "remove-all with no live flags is harmless");
+        var readded = book.add(nether, ON, "New");
+        check(!readded.id().equals(second.id()) && book.observe(nether, ON, 103, 1007) == null, "readding after remove-all starts a fresh flag without invented changes");
+        book.clearHistory(null);
+        check(book.visuals().equals(visuals) && book.flags().size() == 1, "timeline reset leaves appearance and live flags alone");
     }
     private static void storage() throws Exception {
         Path directory = Files.createTempDirectory(Path.of("build"), "flag-tests-");

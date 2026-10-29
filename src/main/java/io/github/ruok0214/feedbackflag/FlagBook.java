@@ -37,9 +37,9 @@ public final class FlagBook {
         public Event { tags = cleanTags(tags); }
     }
     public record Data(int version, boolean enabled, int transparency, List<Flag> flags, List<Event> events,
-                       long sequence, DisplayMode displayMode, Long tickOrigin, Long legacyTickOrigin) {
+                       long sequence, DisplayMode displayMode, Long tickOrigin, Long legacyTickOrigin, VisualSettings visuals) {
         public Data(int version, boolean enabled, int transparency, List<Flag> flags, List<Event> events, long sequence) {
-            this(version, enabled, transparency, flags, events, sequence, DisplayMode.FLAGS, null, null);
+            this(version, enabled, transparency, flags, events, sequence, DisplayMode.FLAGS, null, null, VisualSettings.DEFAULT);
         }
     }
 
@@ -51,6 +51,7 @@ public final class FlagBook {
     private int transparency = 15;
     private long sequence, revision;
     private DisplayMode displayMode = DisplayMode.FLAGS;
+    private VisualSettings visuals = VisualSettings.DEFAULT;
     private Long tickOrigin, legacyTickOrigin;
 
     public List<Flag> flags() { return List.copyOf(flags.values()); }
@@ -60,6 +61,11 @@ public final class FlagBook {
     public Snapshot baseline(Target target) { return baselines.get(target); }
     public boolean enabled() { return enabled; }
     public DisplayMode displayMode() { return displayMode; }
+    public VisualSettings visuals() { return visuals; }
+    public void setVisuals(VisualSettings value) {
+        Objects.requireNonNull(value);
+        if (!visuals.equals(value)) { visuals = value; revision++; }
+    }
     public void setDisplayMode(DisplayMode mode) {
         Objects.requireNonNull(mode);
         if (displayMode != mode) { displayMode = mode; revision++; }
@@ -126,6 +132,18 @@ public final class FlagBook {
                     event.color(), event.kind(), event.before(), event.after(), event.worldTick(), old.tags()) : event);
         events.clear(); events.addAll(retained);
     }
+    /** Removes every live flag while retaining the timeline and the final tags of removed flags. */
+    public void removeAllFlags() {
+        if (flags.isEmpty()) return;
+        var retained = new ArrayDeque<Event>();
+        for (var event : events) {
+            var flag = flags.get(event.flagId());
+            retained.add(flag == null ? event : new Event(event.sequence(), event.time(), event.tick(), event.flagId(),
+                    event.target(), event.text(), event.color(), event.kind(), event.before(), event.after(), event.worldTick(), flag.tags()));
+        }
+        events.clear(); events.addAll(retained);
+        flags.clear(); targets.clear(); baselines.clear(); revision++;
+    }
     /** Clears all history, or just one flag's, without interrupting observation or changing settings. */
     public void clearHistory(UUID id) {
         boolean changed = events.removeIf(event -> id == null || id.equals(event.flagId()));
@@ -165,9 +183,9 @@ public final class FlagBook {
         revision++;
         return event;
     }
-    public Data data() { return new Data(3, enabled, transparency, flags(), events(), sequence, displayMode, tickOrigin, legacyTickOrigin); }
+    public Data data() { return new Data(4, enabled, transparency, flags(), events(), sequence, displayMode, tickOrigin, legacyTickOrigin, visuals); }
     public static FlagBook restore(Data data) {
-        if (data == null || (data.version() < 1 || data.version() > 3) || data.flags() == null || data.events() == null)
+        if (data == null || (data.version() < 1 || data.version() > 4) || data.flags() == null || data.events() == null)
             throw new IllegalArgumentException("Unsupported or incomplete history");
         if (data.flags().size() > MAX_FLAGS || data.events().size() > MAX_EVENTS)
             throw new IllegalArgumentException("History limits exceeded");
@@ -187,6 +205,7 @@ public final class FlagBook {
         }
         book.sequence = Math.max(last, data.sequence());
         book.displayMode = data.displayMode() == null ? DisplayMode.FLAGS : data.displayMode();
+        book.visuals = data.visuals() == null ? VisualSettings.DEFAULT : data.visuals();
         book.tickOrigin = data.tickOrigin(); book.legacyTickOrigin = data.legacyTickOrigin();
         for (var event : book.events) {
             if (event.worldTick() && book.tickOrigin == null) book.tickOrigin = event.tick();

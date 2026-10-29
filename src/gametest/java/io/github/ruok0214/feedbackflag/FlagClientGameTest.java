@@ -57,6 +57,59 @@ public final class FlagClientGameTest implements FabricClientGameTest {
     private static void openTagFilter(ClientGameTestContext context) {
         context.clickScreenButton(visibleLabel(context, "태그:")); context.waitForScreen(TagFilterScreen.class);
     }
+    private static void adjustSlider(ClientGameTestContext context, String prefix, int steps) {
+        context.runOnClient(mc -> {
+            var slider = mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.AbstractSliderButton.class::isInstance)
+                    .map(net.minecraft.client.gui.components.AbstractSliderButton.class::cast)
+                    .filter(b -> b.getMessage().getString().startsWith(prefix)).findFirst().orElseThrow();
+            mc.gui.screen().setFocused(slider);
+            slider.keyPressed(new net.minecraft.client.input.KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
+            for (int i = 0; i < Math.abs(steps); i++) slider.keyPressed(new net.minecraft.client.input.KeyEvent(steps > 0 ? GLFW.GLFW_KEY_RIGHT : GLFW.GLFW_KEY_LEFT, 0, 0));
+            slider.keyPressed(new net.minecraft.client.input.KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
+        });
+    }
+    private static void testAppearance(ClientGameTestContext context) {
+        context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+        context.clickScreenButton("feedback_flag.visual_settings"); context.waitForScreen(VisualSettingsScreen.class);
+        adjustSlider(context, "윤곽선 두께:", 20); adjustSlider(context, "플래그 크기:", 20);
+        adjustSlider(context, "위치 X", 20); adjustSlider(context, "높이 Y", 10); adjustSlider(context, "위치 Z", -10);
+        context.clickScreenButton(visibleLabel(context, "이름 표시:"));
+        context.clickScreenButton(visibleLabel(context, "가려진 윤곽선:"));
+        context.clickScreenButton(visibleLabel(context, "표시:")); context.clickScreenButton(visibleLabel(context, "표시:"));
+        context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().visuals().equals(VisualSettings.DEFAULT), "Appearance edits stay as a draft"));
+        context.getInput().resizeWindow(1000, 700); context.waitTick(); context.takeScreenshot("appearance-settings-ko");
+        context.clickScreenButton("feedback_flag.save"); context.waitForScreen(DashboardScreen.class);
+        var saved = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().visuals());
+        check(saved.outlineWidth() > 2 && saved.flagScale() > 1 && saved.offsetX() > 0 && saved.offsetY() > 0 && saved.offsetZ() < 0,
+                "Appearance sliders save width, size and all three position axes");
+        check(!saved.showNames() && !saved.throughWalls(), "Name and occluded outline switches save independently");
+        context.runOnClient(mc -> {
+            var book = FeedbackFlagClient.manager.book();
+            var target = book.flags().getFirst().target();
+            check(target.x() == 0 && target.y() == 81 && target.z() == 0, "Visual movement never changes observed block coordinates");
+            var marker = FeedbackFlagClient.extractMarkers().getFirst(); var old = FlagGeometry.of(target, VisualSettings.DEFAULT);
+            check(Math.abs((marker.cloth().maxX - marker.cloth().minX) / (old.cloth().maxX - old.cloth().minX) - saved.flagScale()) < .000001,
+                    "Rendered geometry uses selected size");
+            check(marker.label().isEmpty() && !marker.throughWalls() && marker.outlineWidth() >= saved.outlineWidth(), "Renderer uses width and visibility preferences");
+        });
+        context.setScreen(() -> null);
+        var center = context.computeOnClient(mc -> FlagGeometry.of(FeedbackFlagClient.manager.book().flags().getFirst().target(), saved).cloth().getCenter());
+        aim(context, center.x, center.y, center.z); context.waitTicks(5); context.takeScreenshot("custom-appearance-world-ko");
+        context.runOnClient(mc -> check(FeedbackFlagClient.manager.hitFlag() != null && FeedbackFlagClient.manager.hitFlag().id()
+                .equals(FeedbackFlagClient.manager.book().flags().getFirst().id()), "Resized relocated flag remains selectable at its drawn position"));
+        context.getInput().pressMouse(GLFW.GLFW_MOUSE_BUTTON_RIGHT); context.waitForScreen(FlagEditScreen.class);
+        context.clickScreenButton("gui.cancel"); context.waitForScreen(DashboardScreen.class);
+        context.clickScreenButton("feedback_flag.visual_settings"); context.waitForScreen(VisualSettingsScreen.class);
+        context.clickScreenButton("feedback_flag.visual.defaults"); context.clickScreenButton("gui.cancel");
+        context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().visuals().equals(saved), "Cancel discards restoring defaults"));
+        context.clickScreenButton("feedback_flag.visual_settings"); context.waitForScreen(VisualSettingsScreen.class);
+        context.clickScreenButton("feedback_flag.visual.defaults");
+        context.getInput().resizeWindow(854, 480); context.waitTick(); context.takeScreenshot("appearance-defaults-small-ko");
+        context.clickScreenButton("feedback_flag.save");
+        context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().visuals().equals(VisualSettings.DEFAULT)
+                && FeedbackFlagClient.manager.book().displayMode() == FlagBook.DisplayMode.FLAGS
+                && FeedbackFlagClient.manager.book().transparency() == 15, "Save restores all appearance defaults"));
+    }
     private static void assignKey(ClientGameTestContext context, int index, int key) {
         context.runOnClient(mc -> {
             var screen = (KeySettingsScreen)mc.gui.screen();
@@ -82,10 +135,12 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             check(button(mc, "feedback_flag.save").active, "Valid memo can be saved");
             var swatches = mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
                     .map(net.minecraft.client.gui.components.Button.class::cast).filter(b -> b.getMessage().getString().equals("■")).toList();
-            check(swatches.size() == 16, "Sixteen concrete color choices are visible");
+            check(swatches.size() == 16, "Sixteen basic color choices are visible");
+            check(BasicPalette.COLORS.stream().noneMatch(c -> c.label().getString().toLowerCase().contains("concrete")
+                    || c.label().getString().contains("콘크리트")), "Palette labels contain only color names");
             swatches.getLast().onPress(new net.minecraft.client.input.KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
             var boxes = mc.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).toList();
-            check(boxes.get(1).getValue().equals("080A0F"), "Black concrete swatch selects the texture color");
+            check(boxes.get(1).getValue().equals("080A0F"), "Black swatch selects the unchanged color");
             boxes.get(2).setValue("1,2,3,4,5,6,7,8,9");
             check(!button(mc, "feedback_flag.save").active, "Too many tags disable Save");
             boxes.get(2).setValue("입력, 공통");
@@ -315,6 +370,29 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             aim(context, .75, 82.65, .5);
             world.getConnection().waitForChunksRender();
             context.waitTicks(5); context.takeScreenshot("world-flags");
+            testAppearance(context);
+            var beforeRemoval = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().data());
+            var observedBlock = context.computeOnClient(mc -> FlagManager.snapshot(mc.level.getBlockState(new net.minecraft.core.BlockPos(2, 80, 0))));
+            context.runOnClient(mc -> FeedbackFlagClient.manager.startPlacing());
+            context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+            context.clickScreenButton("feedback_flag.remove_all"); context.waitForScreen(net.minecraft.client.gui.screens.ConfirmScreen.class);
+            context.waitTick(); context.takeScreenshot("remove-all-confirmation-ko");
+            context.clickScreenButton("gui.no"); context.waitForScreen(DashboardScreen.class);
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().data().equals(beforeRemoval), "Cancel all-removal preserves every flag and history"));
+            context.clickScreenButton("feedback_flag.remove_all"); context.waitForScreen(net.minecraft.client.gui.screens.ConfirmScreen.class);
+            context.clickScreenButton("gui.yes"); context.waitForScreen(DashboardScreen.class); context.waitTick();
+            context.takeScreenshot("all-flags-removed-ko");
+            context.runOnClient(mc -> {
+                var book = FeedbackFlagClient.manager.book();
+                check(book.flags().isEmpty() && book.events().size() == beforeRemoval.events().size(), "Confirmed all-removal preserves timeline records");
+                check(!FeedbackFlagClient.manager.placing() && !button(mc, "feedback_flag.remove_all").active, "All-removal cancels placement and disables the empty action");
+                check(FeedbackFlagClient.extractMarkers().isEmpty(), "Removed flags leave no world render markers");
+                check(FlagManager.snapshot(mc.level.getBlockState(new net.minecraft.core.BlockPos(2, 80, 0))).equals(observedBlock), "All-removal never modifies actual blocks");
+                check(FeedbackFlagClient.manager.save(), "All-removal persists");
+            });
+            context.setScreen(() -> null); aim(context, 2.5, 81, .5);
+            command(context, "feedbackflag add"); edit(context, "After removal", "2489C7");
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().size() == 1, "Flags can be added normally after all-removal"));
         }
     }
 }

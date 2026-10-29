@@ -2,6 +2,29 @@
 
 2026-10-29, Minecraft 26.2 / Fabric Loader 0.19.5 / Fabric API 0.160.0+26.2 / Java 25 / Windows / OpenGL에서 검증했습니다.
 
+## 0.1.4 표시 설정과 플래그 전체 제거
+
+- `gradlew.bat --offline build compileGametestJava` 통과. 모델 검증 **123개 항목 통과**.
+- Show Interaction 0.2.1과 함께 로딩한 실제 게임 통합 검사 통과.
+- 기본 16색 RGB는 유지하고, 설정/툴팁은 색상 이름만 표시하도록 변경.
+- 모든 차원의 플래그 제거, 확인 취소 시 유지, 확인 후 실제 블록 불변, 타임라인·최종 태그·상대 틱·표시 설정 보존 확인.
+- 전체 제거 후 설치 모드 종료, 버튼 비활성화, 렌더링 표시 제거, 새 플래그 설치 재개 확인.
+- 표시 설정에서 윤곽선 두께, 플래그 크기, X/Y/Z 위치, 이름 표시, 가려진 윤곽선, 투명도와 표시 방식 조절.
+- 실제 슬라이더 키 입력으로 값 변경, 저장 전 원본 유지, 창 크기 변경 후 작성 중 값 유지, 저장/취소/기본값 복원 확인.
+- 위치·크기 변경 후 렌더링 좌표와 클릭 영역이 일치하고, 실제 우클릭으로 설정이 열림을 확인. 감시 대상 좌표는 그대로 유지.
+- 표시 설정 저장/복원, 범위 밖·유효하지 않은 숫자의 안전한 정리, 0.1.3 파일의 기본 표시값 호환 확인.
+- 854×480과 1000×700의 설정 및 확인창을 실제 스크린샷으로 확인.
+
+![표시 설정](screenshots/appearance-settings-ko.png)
+
+![작은 창의 표시 설정](screenshots/appearance-defaults-small-ko.png)
+
+![크기와 위치를 변경한 플래그](screenshots/custom-appearance-world-ko.png)
+
+![플래그 전체 제거 확인](screenshots/remove-all-confirmation-ko.png)
+
+![제거 후에도 보존되는 타임라인](screenshots/all-flags-removed-ko.png)
+
 ## 0.1.3 상대 틱·태그·묶음·표시 방식
 
 - `gradlew.bat --offline build compileGametestJava` 통과. 모델 검증 **107개 항목 통과**.
@@ -13,10 +36,10 @@
 - 한국어 태그 입력, 8개/24자 제한, 중복·대소문자 정리, 이름·메모와 독립 저장, 태그 변경의 기존 이력 적용, 삭제된 플래그의 마지막 태그 보관 확인.
 - 전체/사용자 태그/태그 없음 필터와 플래그 필터 교집합, 필터 후 상대 틱 기준 유지 검증.
 - 플래그 → 블록 윤곽선 → 둘 다 UI 전환 및 렌더링 확인. 블록만 표시할 때 숨은 플래그가 클릭을 가로채지 않음, 전체 투명도 적용 확인.
-- 콘크리트 16색 선택과 검은색 클릭 결과 확인. 색상은 기본 Minecraft 26.2 클라이언트 JAR의 `assets/minecraft/textures/block/*_concrete.png` 픽셀 RGB 평균을 반올림해 사용. 게임 이미지는 재배포하지 않습니다.
+- 기본 16색 선택과 검은색 클릭 결과 확인. 기본 16색의 RGB를 사용하며 게임 이미지는 재배포하지 않습니다.
 - 854×480 및 1000×700의 세부 설정, 태그, 접힌/펼친 타임라인과 월드 표시를 실제 스크린샷으로 확인.
 
-![이름·콘크리트 16색·태그·메모](screenshots/flag-settings-ko.png)
+![이름·기본 16색·태그·메모](screenshots/flag-settings-ko.png)
 
 ![같은 틱의 플래그를 색상으로 표시](screenshots/tick-groups-collapsed-ko.png)
 

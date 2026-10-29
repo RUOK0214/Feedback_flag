@@ -8,7 +8,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.LevelResource;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -147,6 +146,10 @@ public final class FlagManager {
         openFlag(selected.id()); return true;
     }
     public void openFlag(UUID id) { Minecraft.getInstance().gui.setScreen(new FlagEditScreen(new DashboardScreen(this, null), this, id)); }
+    public void removeAllFlags() {
+        placing = false;
+        if (book() != null) { book().removeAllFlags(); save(); }
+    }
     public FlagBook.Flag hitFlag() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || book().transparency() == 100 || !book().displayMode().flags()) return null;
@@ -157,8 +160,7 @@ public final class FlagManager {
         FlagBook.Flag result = null;
         for (var flag : book().flags()) {
             if (!flag.target().dimension().equals(dimension()) || !level.hasChunkAt(pos(flag.target()))) continue;
-            var t = flag.target();
-            var hit = new AABB(t.x() + .45, t.y() + 1, t.z() + .43, t.x() + 1.08, t.y() + 1.85, t.z() + .57).clip(eye, end);
+            var hit = FlagGeometry.of(flag.target(), book().visuals()).hitBox().clip(eye, end);
             if (hit.isPresent() && eye.distanceToSqr(hit.get()) < nearest) {
                 nearest = eye.distanceToSqr(hit.get()); result = flag;
             }

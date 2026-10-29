@@ -26,7 +26,7 @@ public final class FeedbackFlagClient implements ClientModInitializer {
     public static KeyMapping openMenu, placeFlag;
     private boolean menuRequested, addRequested, placementRequested;
     record Marker(AABB pole, AABB cloth, AABB block, Vec3 labelPos, String label, int color,
-                  boolean pulse, boolean drawFlag, boolean drawBlock) { }
+                  float labelScale, float outlineWidth, boolean throughWalls, boolean drawFlag, boolean drawBlock) { }
     private volatile List<Marker> markers = List.of();
 
     @Override public void onInitializeClient() {
@@ -67,9 +67,12 @@ public final class FeedbackFlagClient implements ClientModInitializer {
                         Gizmos.cuboid(marker.pole(), GizmoStyle.fill(marker.color()));
                         Gizmos.cuboid(marker.cloth(), GizmoStyle.strokeAndFill(marker.color(), 1.5f, marker.color()));
                         if (!marker.label().isBlank()) Gizmos.billboardText(marker.label(), marker.labelPos(),
-                                TextGizmo.Style.forColorAndCentered(marker.color()).withScale(.25f));
+                                TextGizmo.Style.forColorAndCentered(marker.color()).withScale(marker.labelScale()));
                     }
-                    if (marker.drawBlock()) Gizmos.cuboid(marker.block(), GizmoStyle.stroke(marker.color(), marker.pulse() ? 3 : 2)).setAlwaysOnTop();
+                    if (marker.drawBlock()) {
+                        var outline = Gizmos.cuboid(marker.block(), GizmoStyle.stroke(marker.color(), marker.outlineWidth()));
+                        if (marker.throughWalls()) outline.setAlwaysOnTop();
+                    }
                 }
             }
         });
@@ -82,17 +85,18 @@ public final class FeedbackFlagClient implements ClientModInitializer {
         if (alpha == 0) return List.of();
         List<Marker> result = new ArrayList<>();
         long now = System.currentTimeMillis();
+        var visuals = book.visuals();
         for (var flag : book.flags()) {
             var t = flag.target();
             if (!t.dimension().equals(manager.dimension()) || !mc.level.hasChunkAt(FlagManager.pos(t))
                     || mc.player.distanceToSqr(t.x() + .5, t.y() + 1, t.z() + .5) > 96 * 96) continue;
             boolean active = book.enabled() && flag.enabled();
             int color = ((active ? alpha : Math.max(1, alpha / 3)) << 24) | flag.color();
-            result.add(new Marker(new AABB(t.x() + .48, t.y() + 1, t.z() + .48, t.x() + .52, t.y() + 1.85, t.z() + .52),
-                    new AABB(t.x() + .52, t.y() + 1.48, t.z() + .48, t.x() + 1.05, t.y() + 1.82, t.z() + .52),
-                    new AABB(FlagManager.pos(t)).inflate(.004), new Vec3(t.x() + .5, t.y() + 2.04, t.z() + .5),
-                    flag.text(), color, active && flag.lastTime() != 0 && now - flag.lastTime() >= 0 && now - flag.lastTime() < 1000,
-                    book.displayMode().flags(), book.displayMode().blocks()));
+            var geometry = FlagGeometry.of(t, visuals);
+            boolean pulse = active && flag.lastTime() != 0 && now - flag.lastTime() >= 0 && now - flag.lastTime() < 1000;
+            result.add(new Marker(geometry.pole(), geometry.cloth(), new AABB(FlagManager.pos(t)).inflate(.004), geometry.label(),
+                    visuals.showNames() ? flag.text() : "", color, (float)(.25 * visuals.flagScale()),
+                    (float)(visuals.outlineWidth() * (pulse ? 1.5 : 1)), visuals.throughWalls(), book.displayMode().flags(), book.displayMode().blocks()));
         }
         return List.copyOf(result);
     }
