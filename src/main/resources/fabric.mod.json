@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "feedback_flag",
+  "version": "${version}",
+  "name": "Feedback Flag",
+  "description": "Pin personal flags to blocks and inspect their changes on a persistent timeline. Open with /feedbackflag.",
+  "authors": ["RUOK0214"],
+  "license": "MIT",
+  "environment": "client",
+  "contact": { "sources": "https://github.com/RUOK0214/Feedback_flag" },
+  "entrypoints": { "client": ["io.github.ruok0214.feedbackflag.FeedbackFlagClient"] },
+  "mixins": ["feedback_flag.client.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "26.2",
+    "java": ">=25",
+    "fabric-api": ">=0.160.0+26.2"
+  }
+}
