@@ -16,7 +16,7 @@ public final class FlagBookTest {
         checks++; if (!condition) throw new AssertionError(message);
     }
     public static void main(String[] args) throws Exception {
-        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos();
+        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos(); resetsAndTicks();
         System.out.println("Feedback Flag: " + checks + " assertions passed.");
     }
     private static void recording() {
@@ -116,6 +116,58 @@ public final class FlagBookTest {
         String longMemo = FlagBook.cleanMemo("😀".repeat(FlagBook.MAX_MEMO + 1));
         check(longMemo.codePointCount(0, longMemo.length()) == FlagBook.MAX_MEMO && longMemo.endsWith("😀"), "memo limit does not split Unicode characters");
     }
+    private static void resetsAndTicks() throws Exception {
+        var book = new FlagBook(); var a = book.add(TARGET, OFF, "A");
+        var other = new FlagBook.Target("minecraft:overworld", 20, 64, 0);
+        var b = book.add(other, OFF, "B");
+        book.edit(a.id(), "A", "keep memo", 0x123456, true, true, false);
+        book.observe(TARGET, AIR, 9000, 100);
+        book.observe(other, ON, 8000, 110);
+        book.observe(other, OFF, 1000, 130);
+        var scale = TimelineScale.of(book.events().reversed());
+        check(scale.worldTicks() && scale.start() == 100 && scale.end() == 130, "timeline uses game ticks rather than wall clock");
+        check(Math.abs(scale.position(book.events().get(1)) - 1d / 3) < .00001, "tick differences set proportional timeline spacing");
+        book.observe(other, ON, 99999, 130);
+        check(TimelineScale.of(book.events().reversed()).position(book.events().getLast()) == 1, "same-tick transitions share a point but retain their rows");
+        var sameTick = TimelineScale.of(book.events().subList(2, 4).reversed());
+        check(sameTick.position(book.events().getLast()) == .5, "single-tick page is centered");
+        book.observe(other, OFF, 100000, 20);
+        check(!TimelineScale.of(book.events().reversed()).worldTicks(), "rolled-back game clock falls back to receipt order");
+        book.setTransparency(42); book.setEnabled(false);
+        long revision = book.revision(), sequence = book.data().sequence();
+        var originalB = book.flag(b.id());
+        book.clearHistory(a.id());
+        check(book.events().size() == 4 && book.events().stream().allMatch(e -> e.flagId().equals(b.id())), "selected reset preserves other records");
+        var resetA = book.flag(a.id());
+        check(resetA.total() == 0 && resetA.lastTime() == 0 && book.flag(b.id()).equals(originalB), "selected reset clears only its counters");
+        check(resetA.memo().equals("keep memo") && resetA.color() == 0x123456 && !resetA.watchProperties(), "reset retains memo and settings");
+        check(!book.enabled() && book.transparency() == 42 && book.baseline(TARGET).equals(AIR), "reset preserves global settings and baseline");
+        check(book.revision() > revision, "reset is marked for persistence");
+        var storage = new BookStorage(Files.createTempDirectory(Path.of("build"), "reset-tests-"), "reset-world");
+        storage.save(book); check(storage.load().data().equals(book.data()), "selective reset persists across restart");
+        book.clearHistory(null);
+        check(book.events().isEmpty() && book.flags().stream().allMatch(f -> f.total() == 0 && f.lastTime() == 0), "global reset clears history and all counters");
+        check(book.flags().size() == 2 && book.flag(a.id()).memo().equals("keep memo"), "global reset preserves flags and memos");
+        book.setEnabled(true);
+        check(book.observe(other, OFF, 100001, 21) == null, "reset does not invent a transition");
+        var next = book.observe(other, ON, 100002, 22);
+        check(next.sequence() == sequence + 1 && book.flag(b.id()).total() == 1, "recording resumes with unique sequence and fresh count");
+        book.remove(b.id()); book.clearHistory(b.id());
+        check(book.events().isEmpty(), "reset can remove a deleted flag's history");
+        storage.save(book); check(storage.load().events().isEmpty(), "empty reset persists");
+        revision = book.revision(); book.clearHistory(null);
+        check(book.revision() == revision, "empty reset is harmless");
+        book.observe(TARGET, OFF, 200000, 300);
+        storage.save(book);
+        var json = com.google.gson.JsonParser.parseString(Files.readString(storage.file())).getAsJsonObject();
+        json.addProperty("version", 1);
+        json.getAsJsonArray("events").get(0).getAsJsonObject().remove("worldTick");
+        Files.writeString(storage.file(), json.toString());
+        var legacy = storage.load();
+        check(!legacy.events().getFirst().worldTick() && legacy.events().getFirst().tick() == 300, "old tick values retain their original clock provenance");
+        check(!TimelineScale.of(legacy.events().reversed()).worldTicks(), "legacy ticks do not pretend to share the world clock");
+        storage.save(legacy); check(storage.load().data().equals(legacy.data()), "legacy clock provenance survives migration");
+    }
     private static void storage() throws Exception {
         Path directory = Files.createTempDirectory(Path.of("build"), "flag-tests-");
         var storage = new BookStorage(directory, "server:localhost:25565");
@@ -139,7 +191,7 @@ public final class FlagBookTest {
         try { new BookStorage(invalidParent, "fail").save(book); throw new AssertionError("write failure swallowed"); }
         catch (java.io.IOException expected) { checks++; }
         check(Files.readString(invalidParent).equals("keep"), "failed save preserves unrelated file");
-        try { FlagBook.restore(new FlagBook.Data(2, true, 15, List.of(), List.of(), 0)); throw new AssertionError("unknown schema accepted"); }
+        try { FlagBook.restore(new FlagBook.Data(99, true, 15, List.of(), List.of(), 0)); throw new AssertionError("unknown schema accepted"); }
         catch (IllegalArgumentException expected) { checks++; }
         try { FlagBook.restore(new FlagBook.Data(1, true, 15, List.of(flag, flag), List.of(), 0)); throw new AssertionError("duplicate id accepted"); }
         catch (IllegalArgumentException expected) { checks++; }

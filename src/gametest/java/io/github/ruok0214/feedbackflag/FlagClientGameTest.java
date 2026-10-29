@@ -41,28 +41,35 @@ public final class FlagClientGameTest implements FabricClientGameTest {
         return mc.gui.screen().children().stream().filter(MultiLineEditBox.class::isInstance)
                 .map(MultiLineEditBox.class::cast).findFirst().orElseThrow();
     }
+    private static net.minecraft.client.gui.components.Button button(net.minecraft.client.Minecraft mc, String key) {
+        String label = net.minecraft.network.chat.Component.translatable(key).getString();
+        return mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
+                .map(net.minecraft.client.gui.components.Button.class::cast).filter(b -> b.getMessage().getString().equals(label)).findFirst().orElseThrow();
+    }
+    private static void assignKey(ClientGameTestContext context, int index, int key) {
+        context.runOnClient(mc -> {
+            var screen = (KeySettingsScreen)mc.gui.screen();
+            ((net.minecraft.client.gui.components.Button)screen.children().get(index * 2))
+                    .onPress(new net.minecraft.client.input.KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
+            screen.keyPressed(new net.minecraft.client.input.KeyEvent(key, 0, 0));
+        });
+    }
     private static void writeMemo(ClientGameTestContext context) {
-        context.clickScreenButton("feedback_flag.memo_edit"); context.waitForScreen(MemoScreen.class);
+        context.waitForScreen(FlagEditScreen.class);
+        context.runOnClient(mc -> mc.gui.screen().setFocused(memoEditor(mc)));
         context.getInput().typeChars("회로 입력"); context.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
         context.getInput().typeChars("리셋 전 확인");
-        context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Multiline keyboard input"));
+        context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Inline multiline keyboard input"));
         context.getInput().resizeWindow(854, 480); context.waitTick();
-        context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Memo draft survives resizing"));
-        context.takeScreenshot("memo-input");
-        context.clickScreenButton("feedback_flag.memo_apply"); context.waitForScreen(FlagEditScreen.class);
-        context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().getFirst().memo().isEmpty(), "Apply updates only the draft"));
-        context.clickScreenButton("feedback_flag.memo_edit"); context.waitForScreen(MemoScreen.class);
+        context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Inline memo draft survives resizing"));
+        context.takeScreenshot("memo-inline-input");
         context.runOnClient(mc -> {
-            check(memoEditor(mc).getValue().equals(MEMO), "Applied draft reopens intact");
+            check(FeedbackFlagClient.manager.book().flags().getFirst().memo().isEmpty(), "Inline editing remains a draft until Save");
             memoEditor(mc).setValue("가".repeat(FlagBook.MAX_MEMO + 1));
-            var apply = mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
-                    .map(net.minecraft.client.gui.components.Button.class::cast).findFirst().orElseThrow();
-            check(!apply.active, "Overlong memo cannot be applied");
+            check(!button(mc, "feedback_flag.save").active, "Overlong inline memo cannot be saved");
+            memoEditor(mc).setValue(MEMO);
+            check(button(mc, "feedback_flag.save").active, "Valid memo can be saved");
         });
-        context.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE); context.waitForScreen(FlagEditScreen.class);
-        context.clickScreenButton("feedback_flag.memo_edit"); context.waitForScreen(MemoScreen.class);
-        context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Escape discards only the subeditor changes"));
-        context.clickScreenButton("gui.cancel"); context.waitForScreen(FlagEditScreen.class);
         context.getInput().resizeWindow(1000, 700); context.waitTick();
     }
     @Override public void runTest(ClientGameTestContext context) {
@@ -74,7 +81,7 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             world.getServer().runCommand("tp @a 0.5 81 3.5 180 0");
             world.getConnection().waitForClientboundPackets();
             context.waitFor(mc -> FeedbackFlagClient.manager.book() != null);
-            context.runOnClient(mc -> check(FeedbackFlagClient.openMenu.isUnbound(), "Shortcut must start unbound"));
+            context.runOnClient(mc -> check(FeedbackFlagClient.openMenu.isUnbound() && FeedbackFlagClient.placeFlag.isUnbound(), "Both shortcuts must start unbound"));
             aim(context, .5, 81.18, .5);
             command(context, "feedbackflag add");
             writeMemo(context);
@@ -101,7 +108,7 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             String eventButton = context.computeOnClient(mc -> mc.gui.screen().children().stream()
                     .filter(net.minecraft.client.gui.components.Button.class::isInstance)
                     .map(net.minecraft.client.gui.components.Button.class::cast)
-                    .filter(b -> b.visible && b.getMessage().getString().matches("[0-9]{2}:.*"))
+                    .filter(b -> b.visible && b.getMessage().getString().matches("[0-9]+ ticks.*"))
                     .findFirst().orElseThrow().getMessage().getString());
             context.clickScreenButton(eventButton);
             context.waitForScreen(EventScreen.class);
@@ -121,18 +128,25 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             context.clickScreenButton("feedback_flag.keys");
             context.waitForScreen(KeySettingsScreen.class);
             context.takeScreenshot("shortcut-unbound-en");
-            context.runOnClient(mc -> {
-                var screen = (KeySettingsScreen)mc.gui.screen();
-                ((net.minecraft.client.gui.components.Button)screen.children().getFirst()).onPress(new net.minecraft.client.input.KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
-                screen.keyPressed(new net.minecraft.client.input.KeyEvent(GLFW.GLFW_KEY_F8, 0, 0));
-                check(!FeedbackFlagClient.openMenu.isUnbound(), "Shortcut assignment");
-            });
+            assignKey(context, 0, GLFW.GLFW_KEY_F8);
+            assignKey(context, 1, GLFW.GLFW_KEY_F9);
+            context.runOnClient(mc -> check(!FeedbackFlagClient.openMenu.isUnbound() && !FeedbackFlagClient.placeFlag.isUnbound(), "Both shortcuts assigned independently"));
+            assignKey(context, 1, GLFW.GLFW_KEY_ESCAPE);
+            context.runOnClient(mc -> check(FeedbackFlagClient.placeFlag.isUnbound() && !FeedbackFlagClient.openMenu.isUnbound(), "Escape unbinds only placement"));
+            assignKey(context, 1, GLFW.GLFW_KEY_F9);
             context.setScreen(() -> null);
             context.getInput().pressKey(GLFW.GLFW_KEY_F8);
             context.waitForScreen(DashboardScreen.class);
             context.clickScreenButton("feedback_flag.keys"); context.clickScreenButton("feedback_flag.unbind");
-            context.runOnClient(mc -> check(FeedbackFlagClient.openMenu.isUnbound(), "Shortcut clearing"));
+            context.runOnClient(mc -> check(FeedbackFlagClient.openMenu.isUnbound() && !FeedbackFlagClient.placeFlag.isUnbound(), "Menu clearing preserves placement shortcut"));
             context.clickScreenButton("feedback_flag.back");
+            context.getInput().pressKey(GLFW.GLFW_KEY_F9); context.waitTick();
+            context.runOnClient(mc -> check(mc.gui.screen() instanceof DashboardScreen && !FeedbackFlagClient.manager.placing(), "Placement shortcut is inactive inside screens"));
+            context.setScreen(() -> null);
+            context.getInput().pressKey(GLFW.GLFW_KEY_F9); context.waitTick();
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.placing(), "Placement shortcut starts placing"));
+            context.getInput().pressKey(GLFW.GLFW_KEY_F9); context.waitTick();
+            context.runOnClient(mc -> check(!FeedbackFlagClient.manager.placing(), "Placement shortcut cancels placing"));
             context.runOnClient(mc -> FeedbackFlagClient.manager.book().setEnabled(false));
             int count = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().events().size());
             world.getServer().runCommand("setblock 0 81 0 minecraft:air");
@@ -148,6 +162,12 @@ public final class FlagClientGameTest implements FabricClientGameTest {
                 check(FeedbackFlagClient.manager.book().flags().size() == 3, "Menu placement mode");
                 check(!FeedbackFlagClient.manager.placing(), "Placement ends after one flag");
             });
+            context.setScreen(() -> null);
+            aim(context, 1.5, 81, .5);
+            context.getInput().pressKey(GLFW.GLFW_KEY_F9); context.waitTick();
+            context.getInput().pressMouse(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+            edit(context, "Shortcut D", "F2D16B");
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().size() == 4 && !FeedbackFlagClient.manager.placing(), "Shortcut places one flag and exits placement"));
             context.runOnClient(mc -> {
                 FeedbackFlagClient.manager.book().setEnabled(true);
                 check(FeedbackFlagClient.manager.save(), "Persistent save");
@@ -161,20 +181,66 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             context.runOnClient(mc -> mc.gui.setScreen(new FlagEditScreen(new DashboardScreen(FeedbackFlagClient.manager, null),
                     FeedbackFlagClient.manager, FeedbackFlagClient.manager.book().flags().getFirst().id())));
             context.waitTick(); context.takeScreenshot("flag-settings-ko");
-            context.clickScreenButton("feedback_flag.memo_edit"); context.waitForScreen(MemoScreen.class);
             context.runOnClient(mc -> check(memoEditor(mc).getValue().equals(MEMO), "Saved memo reopens in Korean UI"));
             context.takeScreenshot("memo-ko");
             context.runOnClient(mc -> memoEditor(mc).setValue("취소할 변경"));
-            context.clickScreenButton("feedback_flag.memo_apply"); context.waitForScreen(FlagEditScreen.class);
             context.clickScreenButton("gui.cancel");
             context.runOnClient(mc -> {
-                check(FeedbackFlagClient.manager.book().flags().getFirst().memo().equals(MEMO), "Cancelling flag settings discards applied memo draft");
+                check(FeedbackFlagClient.manager.book().flags().getFirst().memo().equals(MEMO), "Cancelling flag settings discards inline memo draft");
                 var manager = FeedbackFlagClient.manager;
                 mc.gui.setScreen(new EventScreen(new DashboardScreen(manager, null), manager, manager.book().events().getFirst()));
             });
             context.waitTick(); context.takeScreenshot("memo-event-detail-ko");
             for (int i = 0; i < 4; i++) { context.getInput().scroll(-1); context.waitTick(); }
             context.takeScreenshot("memo-event-detail-scrolled-ko");
+            context.setScreen(() -> new KeySettingsScreen(new DashboardScreen(FeedbackFlagClient.manager, null)));
+            context.waitTick(); context.takeScreenshot("shortcuts-ko");
+            context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+            world.getServer().runCommand("tick freeze");
+            world.getConnection().waitForClientboundPackets(); context.waitTicks(3);
+            long frozenTick = context.computeOnClient(mc -> mc.level.getGameTime());
+            world.getServer().runCommand("setblock 2 80 0 minecraft:diamond_block");
+            context.waitFor(mc -> FeedbackFlagClient.manager.book().events().getLast().after().block().equals("minecraft:diamond_block"));
+            context.runOnClient(mc -> {
+                var event = FeedbackFlagClient.manager.book().events().getLast();
+                check(event.worldTick() && event.tick() == frozenTick, "Received event uses the frozen world tick");
+            });
+            context.waitTicks(5);
+            world.getServer().runCommand("setblock 2 80 0 minecraft:emerald_block");
+            context.waitFor(mc -> FeedbackFlagClient.manager.book().events().getLast().after().block().equals("minecraft:emerald_block"));
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().events().getLast().tick() == frozenTick, "Client ticks do not advance a frozen world clock"));
+            world.getServer().runCommand("tick unfreeze");
+            var firstId = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().flags().getFirst().id());
+            int beforeReset = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().events().size());
+            context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+            context.clickScreenButton("feedback_flag.clear_history");
+            context.waitForScreen(net.minecraft.client.gui.screens.ConfirmScreen.class);
+            context.takeScreenshot("reset-confirmation-ko");
+            context.clickScreenButton("gui.no"); context.waitForScreen(DashboardScreen.class);
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().events().size() == beforeReset, "Cancelling reset preserves records"));
+            context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, firstId));
+            context.clickScreenButton("feedback_flag.clear_flag_history");
+            context.waitForScreen(net.minecraft.client.gui.screens.ConfirmScreen.class);
+            context.clickScreenButton("gui.yes"); context.waitForScreen(DashboardScreen.class);
+            context.runOnClient(mc -> {
+                var book = FeedbackFlagClient.manager.book();
+                check(!book.events().isEmpty() && book.events().stream().noneMatch(e -> e.flagId().equals(firstId)), "Filtered reset keeps other flags' records");
+                check(book.flag(firstId).total() == 0 && book.flag(firstId).memo().equals(MEMO), "Filtered reset keeps its flag and memo");
+            });
+            context.clickScreenButton("feedback_flag.all_flags");
+            context.clickScreenButton("feedback_flag.clear_history");
+            context.waitForScreen(net.minecraft.client.gui.screens.ConfirmScreen.class);
+            context.clickScreenButton("gui.yes"); context.waitForScreen(DashboardScreen.class);
+            context.waitTick(); context.takeScreenshot("timeline-reset-ko");
+            context.runOnClient(mc -> {
+                var book = FeedbackFlagClient.manager.book();
+                check(book.events().isEmpty() && book.flags().size() == 4 && book.flags().stream().allMatch(f -> f.total() == 0), "Global reset clears only history and counters");
+                check(!button(mc, "feedback_flag.clear_history").active, "Empty timeline reset button disabled");
+                check(FeedbackFlagClient.manager.save(), "Reset persists successfully");
+            });
+            world.getServer().runCommand("setblock 2 80 0 minecraft:stone");
+            context.waitFor(mc -> FeedbackFlagClient.manager.book().events().size() == 1);
+            context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().get(1).total() == 1, "Recording resumes after reset"));
             context.setScreen(() -> null);
             aim(context, .75, 82.65, .5);
             world.getConnection().waitForChunksRender();

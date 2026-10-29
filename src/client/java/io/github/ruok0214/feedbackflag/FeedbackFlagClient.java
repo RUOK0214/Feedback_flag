@@ -23,16 +23,18 @@ import java.util.List;
 
 public final class FeedbackFlagClient implements ClientModInitializer {
     public static FlagManager manager;
-    public static KeyMapping openMenu;
+    public static KeyMapping openMenu, placeFlag;
     private boolean menuRequested, addRequested, placementRequested;
     private record Marker(AABB pole, AABB cloth, AABB block, Vec3 labelPos, String label, int color, boolean pulse) { }
     private volatile List<Marker> markers = List.of();
 
     @Override public void onInitializeClient() {
         manager = new FlagManager();
+        var category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("feedback_flag", "main"));
         openMenu = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.feedback_flag.menu",
-                InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(),
-                KeyMapping.Category.register(Identifier.fromNamespaceAndPath("feedback_flag", "main"))));
+                InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), category));
+        placeFlag = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.feedback_flag.place",
+                InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), category));
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registry) -> {
             var root = dispatcher.register(ClientCommands.literal("feedbackflag")
                     .requires(source -> source.attended())
@@ -44,7 +46,8 @@ public final class FeedbackFlagClient implements ClientModInitializer {
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             manager.tick(client);
-            while (openMenu.consumeClick()) menuRequested = true;
+            while (openMenu.consumeClick()) if (client.gui.screen() == null) menuRequested = true;
+            while (placeFlag.consumeClick()) if (client.gui.screen() == null) placementRequested = true;
             if (client.level != null && manager.book() != null) {
                 if (menuRequested) client.gui.setScreen(new DashboardScreen(manager, null));
                 else if (addRequested) {

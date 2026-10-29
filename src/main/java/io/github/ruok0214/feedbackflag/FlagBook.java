@@ -27,7 +27,7 @@ public final class FlagBook {
     }
     public enum Kind { BLOCK, STATE }
     public record Event(long sequence, long time, long tick, UUID flagId, Target target,
-                        String text, int color, Kind kind, Snapshot before, Snapshot after) { }
+                        String text, int color, Kind kind, Snapshot before, Snapshot after, boolean worldTick) { }
     public record Data(int version, boolean enabled, int transparency, List<Flag> flags, List<Event> events, long sequence) { }
 
     private final LinkedHashMap<UUID, Flag> flags = new LinkedHashMap<>();
@@ -78,6 +78,19 @@ public final class FlagBook {
         targets.remove(old.target()); baselines.remove(old.target()); revision++;
         // Historical events retain a copy of the flag's identity, label and color.
     }
+    /** Clears all history, or just one flag's, without interrupting observation or changing settings. */
+    public void clearHistory(UUID id) {
+        boolean changed = events.removeIf(event -> id == null || id.equals(event.flagId()));
+        for (var flag : flags()) {
+            if ((id == null || id.equals(flag.id())) && (flag.total() != 0 || flag.lastTime() != 0)) {
+                flags.put(flag.id(), new Flag(flag.id(), flag.target(), flag.text(), flag.memo(), flag.color(),
+                        flag.enabled(), flag.watchBlocks(), flag.watchProperties(), 0, 0));
+                changed = true;
+            }
+        }
+        // Keep sequence numbers unique even when another screen still holds a previous event.
+        if (changed) revision++;
+    }
     public void seed(Target target, Snapshot snapshot) {
         if (targets.containsKey(target) && snapshot != null) baselines.put(target, snapshot);
     }
@@ -92,7 +105,7 @@ public final class FlagBook {
         if (previous == null || previous.equals(next) || !enabled || !flag.enabled()) return null;
         Kind kind = previous.block().equals(next.block()) ? Kind.STATE : Kind.BLOCK;
         if (kind == Kind.BLOCK ? !flag.watchBlocks() : !flag.watchProperties()) return null;
-        Event event = new Event(++sequence, time, tick, flag.id(), target, flag.text(), flag.color(), kind, previous, next);
+        Event event = new Event(++sequence, time, tick, flag.id(), target, flag.text(), flag.color(), kind, previous, next, true);
         events.addLast(event);
         while (events.size() > MAX_EVENTS) events.removeFirst();
         flags.put(flag.id(), new Flag(flag.id(), target, flag.text(), flag.memo(), flag.color(), flag.enabled(),
@@ -100,9 +113,9 @@ public final class FlagBook {
         revision++;
         return event;
     }
-    public Data data() { return new Data(1, enabled, transparency, flags(), events(), sequence); }
+    public Data data() { return new Data(2, enabled, transparency, flags(), events(), sequence); }
     public static FlagBook restore(Data data) {
-        if (data == null || data.version() != 1 || data.flags() == null || data.events() == null)
+        if (data == null || (data.version() != 1 && data.version() != 2) || data.flags() == null || data.events() == null)
             throw new IllegalArgumentException("Unsupported or incomplete history");
         if (data.flags().size() > MAX_FLAGS || data.events().size() > MAX_EVENTS)
             throw new IllegalArgumentException("History limits exceeded");

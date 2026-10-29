@@ -5,9 +5,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
@@ -24,8 +21,7 @@ final class EventScreen extends FlagScreen {
         panelWidth = Math.min(620, width - 28); left = (width - panelWidth) / 2;
         lines.clear();
         line(Component.literal(event.text() + "  ·  #" + event.sequence()).withColor(event.color()));
-        line(tr("event_time", DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(event.time()))));
-        line(tr("event_tick", event.tick()));
+        line(tr(event.worldTick() ? "event_tick" : "legacy_event_tick", event.tick()));
         line(Component.literal(event.target().dimension() + " · " + event.target().coordinates()));
         line(tr("kind." + event.kind().name().toLowerCase(java.util.Locale.ROOT)));
         line(Component.empty());

@@ -86,7 +86,7 @@ public final class FlagManager {
     public void observed(ClientLevel source, BlockPos pos, BlockState state) {
         if (source != level || book() == null || !source.hasChunkAt(pos)) return;
         FlagBook.Target target = target(pos);
-        if (book().at(target) != null) book().observe(target, snapshot(state), System.currentTimeMillis(), ticks);
+        if (book().at(target) != null) book().observe(target, snapshot(state), System.currentTimeMillis(), source.getGameTime());
     }
     public void unloaded(ClientLevel source, int chunkX, int chunkZ) {
         if (source != level || book() == null) return;
