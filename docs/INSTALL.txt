@@ -1,9 +1,9 @@
-Feedback Flag 0.1.7 · 피드백 플래그
+Feedback Flag 0.1.8 · 피드백 플래그
 Minecraft Java 26.2 / Fabric
 
 설치
 1. Fabric Loader 0.19.5 이상으로 실행하는 Minecraft 26.2 프로필을 준비합니다.
-2. mods 폴더에 feedback-flag-0.1.7.jar와 26.2용 Fabric API(0.160.0+26.2 이상)를 넣습니다.
+2. mods 폴더에 feedback-flag-0.1.8.jar와 26.2용 Fabric API(0.160.0+26.2 이상)를 넣습니다.
    Fabric API는 별도로 설치해야 합니다. Java 25 이상이 필요합니다.
 3. 업데이트할 때는 이전 Feedback Flag JAR를 교체하고 config 폴더를 유지합니다.
 서버 설치는 필요하지 않습니다. Mod Menu는 선택 사항입니다.

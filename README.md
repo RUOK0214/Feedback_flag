@@ -8,7 +8,7 @@
 - Fabric Loader **0.19.5 이상**
 - Fabric API **0.160.0+26.2 이상인 26.2용 버전** — 별도 설치
 
-`feedback-flag-0.1.7.jar`와 Fabric API를 게임 프로필의 `mods` 폴더에 넣으세요. 업데이트할 때는 이전 Feedback Flag JAR를 교체하고 `config` 폴더는 유지하세요. Mod Menu는 선택 사항입니다.
+`feedback-flag-0.1.8.jar`와 Fabric API를 게임 프로필의 `mods` 폴더에 넣으세요. 업데이트할 때는 이전 Feedback Flag JAR를 교체하고 `config` 폴더는 유지하세요. Mod Menu는 선택 사항입니다.
 
 ## 시작하기
 
