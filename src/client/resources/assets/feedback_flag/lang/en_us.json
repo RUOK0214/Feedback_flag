@@ -205,5 +205,6 @@
   "feedback_flag.archive.load_failed": "Could not read records. Check the files and refresh.",
   "feedback_flag.archive.empty": "No saved timelines yet.",
   "feedback_flag.archive.library_hint": "Select an archive to open a read-only timeline.",
-  "feedback_flag.archive.invalid": "This archive is invalid or unsupported. The original file is unchanged."
+  "feedback_flag.archive.invalid": "This archive is invalid or unsupported. The original file is unchanged.",
+  "feedback_flag.timeline.position": "Position: %s%%"
 }

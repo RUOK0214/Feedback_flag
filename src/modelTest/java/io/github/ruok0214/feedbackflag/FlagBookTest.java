@@ -376,7 +376,16 @@ public final class FlagBookTest {
         view.latest(); check(view.start() == 250 && view.end() == 300, "latest preserves zoom span");
         view.update(new TimelineScale(true, 100, 320)); check(view.start() == 270 && view.end() == 320, "follow latest tracks arrivals");
         view.zoom(.5, 1); check(view.end() == 320 && view.start() == 295, "anchored zoom retains cursor position");
+        view.scrollTo(0); check(view.start() == 100 && view.end() == 125 && view.scrollPosition() == 0, "slider reaches oldest interval preserving zoom");
+        view.scrollTo(1); check(view.start() == 295 && view.end() == 320 && view.scrollPosition() == 1, "slider reaches newest interval");
+        view.scrollTo(.5); check(view.start() == 197.5 && view.end() == 222.5 && view.scrollPosition() == .5, "slider maps midpoint across available range");
+        view.scrollTo(Double.NaN); check(view.start() == 197.5, "slider ignores nonfinite input");
+        view.scrollTo(-1); check(view.start() == 100, "slider clamps input");
+        view.latest(); view.scrollTo(.5); view.update(new TimelineScale(true, 100, 340));
+        check(view.start() == 197.5 && view.end() == 222.5, "manual slider disables follow and stays fixed on arrivals");
+        view.update(new TimelineScale(true, 100, 320));
         view.reset(); check(view.start() == 100 && view.end() == 320, "fit all resets zoom");
+        view.scrollTo(1); check(view.start() == 100 && view.end() == 320 && view.scrollPosition() == 0, "full interval has no slider travel");
         view.update(new TimelineScale(false, 1, 10)); check(!view.worldTicks() && view.start() == 1 && view.end() == 10, "clock rollback resets to receipt-order interval");
         view.update(new TimelineScale(true, 200, 200)); view.zoom(.5, .5); view.pan(1);
         check(view.start() == 200 && view.end() == 200 && !view.canZoomIn(), "same-tick timeline remains finite");

@@ -176,6 +176,18 @@ Minecraft 26.2 / Fabric Loader 0.19.5 / Fabric API 0.160.0+26.2 / Java 25 / Wind
 
 독립된 멀티플레이 서버, Show Interaction 이외의 모드 조합, Vulkan 렌더러는 이번 검증에 포함되지 않았습니다. 기록은 클라이언트가 받은 블록 상태 변경을 대상으로 하며 서버 전체 변경 이력이나 블록 엔티티 내용물을 보장하지 않습니다.
 
+## 0.1.7 구간 위치 슬라이더
+
+모델 검증 200개와 실제 Minecraft 26.2 클라이언트 검사를 통과했습니다. 슬라이더의 양 끝·중앙 위치, 확대 배율 유지, 범위 제한, 전체 구간 비활성화, 직접 이동 후 최신 따라가기 해제를 검사했습니다. 작은 화면에서 확대 보기·저장 기록·타임라인 초기화 버튼의 순서와 비겹침, 슬라이더 키보드 조작, 확대 기록 저장·재열기까지 확인했습니다.
+
+실제로 내보낸 HTML을 브라우저에서 열어 전체 구간의 비활성 슬라이더와 확대 후 Home/End 이동(0→20틱, 20→40틱)을 확인했습니다. 브라우저 오류 로그는 없었습니다. 기존 HTML 파일은 그대로이며 새로 저장하는 파일에 슬라이더가 포함됩니다.
+
+![버튼 배치](screenshots/timeline-actions-ko.png)
+
+![게임 내 구간 위치](screenshots/timeline-slider-ko.png)
+
+![HTML 구간 위치](screenshots/timeline-slider-html-ko.png)
+
 ## 화면
 
 ![전체 메뉴](screenshots/dashboard-ko.png)

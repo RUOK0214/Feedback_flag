@@ -9,6 +9,7 @@
 <section class="panel" aria-label="타임라인 필터와 확대">
 <div class="tools"><input id="search" aria-label="이름·태그·좌표 검색" placeholder="이름·태그·좌표 검색"><select id="tag" aria-label="태그"><option value="">모든 태그</option></select></div>
 <div class="tools" style="margin-top:12px"><button id="out" aria-label="축소">−</button><button id="in" aria-label="확대">＋</button><button id="left">← 이전 구간</button><button id="right">다음 구간 →</button><button id="fit">전체 구간</button><span id="range"></span></div>
+<div class="tools" style="margin-top:12px"><label for="position">구간 위치</label><input type="range" id="position" min="0" max="1000" value="0" step="1"></div>
 <svg id="axis" viewBox="0 0 1000 100" role="img" aria-label="타임라인. 색상 점을 클릭하면 해당 틱의 기록을 엽니다."></svg>
 <span id="count" aria-live="polite"></span></section>
 <section class="panel" aria-label="틱별 기록"><div id="groups"></div><p id="empty" hidden>이 구간에 일치하는 기록이 없습니다.</p><footer><button id="prev">이전 페이지</button><span id="page"></span><button id="next">다음 페이지</button></footer></section>
@@ -43,6 +44,7 @@ function events(details,group){if(details.dataset.loaded)return;details.dataset.
 }}
 function render(){visible=filtered.filter(g=>axisValue(g)>=start&&axisValue(g)<=end).reverse();page=Math.max(0,Math.min(page,Math.max(0,Math.ceil(visible.length/size)-1)));
  $('range').textContent=(data.ticks?'':'기록 순서 · ')+Math.floor(start)+' → '+Math.ceil(end)+(data.ticks?'틱':'');
+ const available=high-low-(end-start);$('position').disabled=available<=0;$('position').value=available<=0?0:Math.round((start-low)/available*1000);$('position').setAttribute('aria-valuetext',$('range').textContent);
  $('count').textContent=visible.length+'개 틱 묶음 · '+visible.reduce((n,g)=>n+g.events.length,0)+'개 기록';
  $('in').disabled=end-start<=1;$('out').disabled=end-start>=high-low;$('left').disabled=start<=low;$('right').disabled=end>=high;
  const axis=$('axis');axis.replaceChildren(svg('line',{x1:10,y1:50,x2:990,y2:50,stroke:'#52718c','stroke-width':2}));
@@ -55,5 +57,6 @@ function render(){visible=filtered.filter(g=>axisValue(g)>=start&&axisValue(g)<=
  }
  $('empty').hidden=visible.length!==0;$('page').textContent=(page+1)+' / '+Math.max(1,Math.ceil(visible.length/size));$('prev').disabled=page===0;$('next').disabled=(page+1)*size>=visible.length;
 }
+$('position').addEventListener('input',()=>{const span=end-start;start=low+(high-low-span)*Number($('position').value)/1000;end=start+span;clamp();page=0;render();});
 $('search').addEventListener('input',select);$('tag').addEventListener('change',select);$('in').onclick=()=>zoom(.5);$('out').onclick=()=>zoom(2);$('left').onclick=()=>pan(-.5);$('right').onclick=()=>pan(.5);$('fit').onclick=()=>{start=low;end=high;page=0;render();};$('prev').onclick=()=>{page--;render();};$('next').onclick=()=>{page++;render();};select();
 </script></body></html>

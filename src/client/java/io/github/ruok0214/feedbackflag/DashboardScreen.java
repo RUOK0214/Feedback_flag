@@ -58,7 +58,8 @@ public final class DashboardScreen extends FlagScreen {
                 new TagFilterScreen(this, manager.book().availableTags(), selected -> {
                     tagFilter = selected; rowOffset = 0; expanded.clear();
                 })));
-        clearWidth = Math.min(130, rightWidth / 2);
+        int browseWidth = Math.min(80, (rightWidth - 8) / 3);
+        clearWidth = rightWidth - 2 * browseWidth - 8;
         clearHistory = button(tr(filter == null ? "clear_history" : "clear_flag_history"),
                 rightX + rightWidth - clearWidth, 80, clearWidth, () -> minecraft.gui.setScreen(new ConfirmScreen(confirmed -> {
                     if (confirmed) { manager.book().clearHistory(filter); manager.save(); rowOffset = 0; expanded.clear(); }
@@ -67,9 +68,9 @@ public final class DashboardScreen extends FlagScreen {
         clearHistory.setTooltip(Tooltip.create(tr("clear_filter_hint")));
         addRenderableWidget(Button.builder(tr("timeline.open"), b -> minecraft.gui.setScreen(new TimelineScreen(this, manager, manager.book(), filter, tagFilter,
                 minecraft.getSingleplayerServer() != null ? minecraft.getSingleplayerServer().getWorldData().getLevelName() : minecraft.getCurrentServer() != null ? minecraft.getCurrentServer().ip : "World")))
-                .bounds(rightX + rightWidth - 136, 104, 66, 17).build());
+                .bounds(rightX, 80, browseWidth, 20).build());
         addRenderableWidget(Button.builder(tr("archive.library"), b -> minecraft.gui.setScreen(new ArchiveLibraryScreen(this)))
-                .bounds(rightX + rightWidth - 66, 104, 66, 17).build());
+                .bounds(rightX + browseWidth + 4, 80, browseWidth, 20).build());
         removeAll = addRenderableWidget(Button.builder(tr("remove_all"), ignored -> minecraft.gui.setScreen(new ConfirmScreen(confirmed -> {
             if (confirmed) { manager.removeAllFlags(); flagPage = 0; }
             minecraft.gui.setScreen(this);
@@ -187,10 +188,10 @@ public final class DashboardScreen extends FlagScreen {
         long active = flags.stream().filter(f -> manager.status(f).equals("watching")).count();
         String error = manager.errorKey();
         var summary = error == null ? tr("summary", active, flags.size(), manager.book().events().size()) : tr(error);
-        text(g, summary, rightX, 86, rightWidth - clearWidth - 6, error == null ? MUTED : 0xFFFF8888);
-        if (x >= rightX && x < rightX + rightWidth - clearWidth && y >= 80 && y < 100) g.setTooltipForNextFrame(summary, x, y);
+        text(g, summary, rightX + 68, 109, rightWidth - 68, error == null ? MUTED : 0xFFFF8888);
+        if (x >= rightX && x < rightX + rightWidth && y >= 104 && y < 120) g.setTooltipForNextFrame(summary, x, y);
         text(g, tr("flags_short"), 10, 109, leftWidth - 68, WHITE);
-        text(g, tr(filter == null ? "timeline" : "filtered_timeline"), rightX, 109, rightWidth - 140, WHITE);
+        text(g, tr(filter == null ? "timeline" : "filtered_timeline"), rightX, 109, 64, WHITE);
         if (flags.isEmpty()) g.textWithWordWrap(font, tr("no_flags"), 12, 154, leftWidth - 4, MUTED);
         else for (int i = 0; i < flagRows; i++) {
             int index = flagPage * flagRows + i; if (index >= flags.size()) break;

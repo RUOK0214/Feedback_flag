@@ -9,7 +9,7 @@ Minecraft Java **26.2 / Fabric**용 개인 블록 관찰 도구입니다. 블록
 - Minecraft 26.2용 Fabric API 0.160.0 이상
 - Java 25 이상 (게임 런처에 포함된 Java 사용 가능)
 
-`feedback-flag-0.1.6.jar`와 해당 버전의 Fabric API를 게임의 `mods` 폴더에 넣습니다. `-sources.jar`는 개발용 소스이며 설치 파일이 아닙니다. 업데이트할 때는 이전 Feedback Flag JAR를 새 버전으로 교체하세요.
+`feedback-flag-0.1.7.jar`와 해당 버전의 Fabric API를 게임의 `mods` 폴더에 넣습니다. `-sources.jar`는 개발용 소스이며 설치 파일이 아닙니다. 업데이트할 때는 이전 Feedback Flag JAR를 새 버전으로 교체하세요.
 
 Mod Menu가 설치되어 있으면 모드 목록에 전용 플래그 아이콘과 한국어/영어 요약·설명이 표시됩니다. 설명에는 메뉴 명령어와 기본 미지정 단축키 안내가 포함됩니다. Mod Menu는 선택 사항이며 Feedback Flag의 필수 의존성이 아닙니다.
 
@@ -143,8 +143,10 @@ Java 25와 Gradle Wrapper 9.5.1을 사용합니다. Minecraft 26.2는 공식 비
 ./gradlew runClientGameTest
 ```
 
-Windows에서는 `gradlew.bat`를 사용합니다. `build`는 모드 생성과 193개 모델 검증 항목을 실행합니다. `runClientGameTest`는 별도 테스트 월드에서 실제 패킷, 클릭, 설정, 단축키, 화면 내 메모 입력·저장·취소, 상대 틱 기준·게임틱 정지, 태그 필터, 틱 묶음 접기·펼치기, 표시 방식·크기·위치와 클릭 영역, 전체 제거 확인/취소, 초기화와 화면 출력을 확인합니다. 이름·색·태그·활성 상태 검색 조합, 검색 결과 편집, 조건 초기화, 개별/전체 삭제 복원과 복원 충돌도 검사합니다. 여러 페이지에 걸친 선택·일괄 편집 적용/취소, 확대 구간 저장과 원래 상대 틱 유지, 저장 파일 재열기 및 현재 기록 초기화 후 저장본 보존을 확인합니다. Mod Menu를 테스트 환경에 추가하면 실제 모드 목록의 아이콘과 한국어 설명도 검사합니다. 테스트 전용 코드는 설치용 JAR에 포함되지 않습니다. 생성물은 `build/libs`, 게임 테스트 스크린샷은 `build/run/clientGameTest/screenshots`에 있습니다.
+Windows에서는 `gradlew.bat`를 사용합니다. `build`는 모드 생성과 200개 모델 검증 항목을 실행합니다. `runClientGameTest`는 별도 테스트 월드에서 실제 패킷, 클릭, 설정, 단축키, 화면 내 메모 입력·저장·취소, 상대 틱 기준·게임틱 정지, 태그 필터, 틱 묶음 접기·펼치기, 표시 방식·크기·위치와 클릭 영역, 전체 제거 확인/취소, 초기화와 화면 출력을 확인합니다. 이름·색·태그·활성 상태 검색 조합, 검색 결과 편집, 조건 초기화, 개별/전체 삭제 복원과 복원 충돌도 검사합니다. 여러 페이지에 걸친 선택·일괄 편집 적용/취소, 확대 구간 저장과 원래 상대 틱 유지, 저장 파일 재열기 및 현재 기록 초기화 후 저장본 보존을 확인합니다. Mod Menu를 테스트 환경에 추가하면 실제 모드 목록의 아이콘과 한국어 설명도 검사합니다. 테스트 전용 코드는 설치용 JAR에 포함되지 않습니다. 생성물은 `build/libs`, 게임 테스트 스크린샷은 `build/run/clientGameTest/screenshots`에 있습니다.
 
 GitHub Actions는 빌드 결과를 `feedback-flag` 아티팩트로 보관합니다.
 
 개발 API 참고: [Fabric 26.2](https://fabricmc.net/2026/06/15/262.html), [Fabric 게임 테스트](https://docs.fabricmc.net/develop/automatic-testing), [Mod Menu의 번역·메타데이터](https://github.com/TerraformersMC/ModMenu/blob/26.2/README.md#translation-api).
+
+확대 보기와 저장 기록 버튼은 타임라인 초기화 바로 왼쪽에 있습니다. 확대 후 구간 위치 슬라이더를 끌어 배율을 유지하며 구간을 이동할 수 있습니다. 실시간·저장 기록과 HTML 보기에서 지원하며, 전체 구간에서는 슬라이더가 비활성화됩니다.

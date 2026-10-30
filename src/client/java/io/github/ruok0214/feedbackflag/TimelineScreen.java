@@ -2,6 +2,7 @@ package io.github.ruok0214.feedbackflag;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -22,6 +23,7 @@ final class TimelineScreen extends FlagScreen {
     private List<Row> rows = List.of();
     private final List<Button> buttons = new ArrayList<>();
     private Button previous, next, zoomIn, zoomOut, tagButton, save;
+    private PositionSlider positionSlider;
     private int left, panelWidth, count, offset;
     private long revision = -1;
     private long origin;
@@ -42,7 +44,8 @@ final class TimelineScreen extends FlagScreen {
         button(Component.literal(">"), left + 96, 56, 28, () -> { viewport.pan(.5); offset = 0; refresh(); }).setTooltip(Tooltip.create(tr("timeline.pan_right")));
         button(tr("timeline.fit"), left + 128, 56, 72, () -> { viewport.reset(); offset = 0; refresh(); });
         button(tr("timeline.latest"), left + 204, 56, 72, () -> { viewport.latest(); offset = 0; refresh(); });
-        count = Math.max(1, (height - 174) / 26);
+        positionSlider = addRenderableWidget(new PositionSlider());
+        count = Math.max(1, (height - 188) / 26);
         for (int i = 0; i < count; i++) buttons.add(addRenderableWidget(new RecordButton(i)));
         previous = button(Component.literal("<"), left, height - 29, 26, () -> { offset -= count; refresh(); });
         next = button(Component.literal(">"), left + 30, height - 29, 26, () -> { offset += count; refresh(); });
@@ -82,6 +85,7 @@ final class TimelineScreen extends FlagScreen {
         }
         previous.active = offset > 0; next.active = offset + count < rows.size();
         zoomIn.active = viewport.canZoomIn(); zoomOut.active = viewport.canZoomOut();
+        positionSlider.sync();
         save.active = !groups.isEmpty(); tagButton.setMessage(tagLabel()); revision = book.revision();
     }
     private void activate(int index) {
@@ -122,13 +126,19 @@ final class TimelineScreen extends FlagScreen {
             for (int i = 0; i < Math.min(4, flags.size()); i++) g.fill(px - 3, 99 + i * 5, px + 4, 104 + i * 5, 0xFF000000 | flags.get(i).color());
             if (Math.abs(mx - px) <= 5 && my >= 96 && my <= 119) g.setTooltipForNextFrame(label(group), mx, my);
         }
-        text(g, tr("timeline.count", groups.size(), groups.stream().mapToInt(v -> v.events().size()).sum()), left, 123, panelWidth, MUTED);
-        if (groups.isEmpty()) text(g, tr("timeline.empty"), left, 145, panelWidth, MUTED);
+        text(g, tr("timeline.count", groups.size(), groups.stream().mapToInt(v -> v.events().size()).sum()), left, 145, panelWidth, MUTED);
+        if (groups.isEmpty()) text(g, tr("timeline.empty"), left, 167, panelWidth, MUTED);
         text(g, Component.literal(rows.isEmpty() ? "0/0" : (offset + 1) + "–" + Math.min(rows.size(), offset + count) + "/" + rows.size()), left + 64, height - 23, panelWidth - 150, MUTED);
+    }
+    private final class PositionSlider extends AbstractSliderButton {
+        PositionSlider() { super(left, 121, panelWidth, 20, Component.empty(), 0); }
+        void sync() { value = viewport.scrollPosition(); active = viewport.canZoomOut(); updateMessage(); }
+        @Override protected void updateMessage() { setMessage(tr("timeline.position", (int)Math.round(value * 100))); }
+        @Override protected void applyValue() { viewport.scrollTo(value); offset = 0; refresh(); }
     }
     private final class RecordButton extends Button {
         private final int index;
-        RecordButton(int index) { super(left, 137 + index * 26, panelWidth, 24, Component.empty(), b -> activate(index), DEFAULT_NARRATION); this.index = index; }
+        RecordButton(int index) { super(left, 159 + index * 26, panelWidth, 24, Component.empty(), b -> activate(index), DEFAULT_NARRATION); this.index = index; }
         @Override protected void extractContents(GuiGraphicsExtractor g, int mx, int my, float delta) {
             extractDefaultSprite(g); var row = row(index); if (row == null) return;
             text(g, getMessage(), getX() + 8, getY() + (row.event() == null ? 4 : 8), getWidth() - 16, row.event() == null ? WHITE : 0xFF000000 | row.event().color());

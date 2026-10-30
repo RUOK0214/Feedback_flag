@@ -255,10 +255,26 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             book.seed(a.target(), stone); book.observe(a.target(), air, 10, 1000); book.observe(a.target(), stone, 11, 1020); book.observe(a.target(), air, 12, 1040);
         });
         context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+        context.runOnClient(mc -> {
+            var explore = button(mc, "feedback_flag.timeline.open");
+            var archives = button(mc, "feedback_flag.archive.library");
+            var clear = button(mc, "feedback_flag.clear_history");
+            check(explore.getY() == clear.getY() && archives.getY() == clear.getY()
+                    && explore.getRight() < archives.getX() && archives.getRight() < clear.getX(), "Timeline actions sit left of reset without overlap");
+        });
+        context.waitTick(); context.takeScreenshot("timeline-actions-ko");
         context.clickScreenButton("feedback_flag.timeline.open"); context.waitForScreen(TimelineScreen.class);
         context.waitTick(); context.takeScreenshot("timeline-explorer-small-ko");
         context.clickScreenButton("+");
         check(visibleLabel(context, "▶ ").contains("20틱"), "Zoom shows the middle interval at its original relative tick");
+        adjustSlider(context, "구간 위치:", 1000);
+        check(visibleLabel(context, "▶ ").contains("40틱"), "Position slider reaches latest interval");
+        adjustSlider(context, "구간 위치:", -1000);
+        context.runOnClient(mc -> check(mc.gui.screen().children().stream()
+                .filter(net.minecraft.client.gui.components.AbstractSliderButton.class::isInstance)
+                .map(net.minecraft.client.gui.components.AbstractSliderButton.class::cast)
+                .anyMatch(b -> b.getMessage().getString().equals("구간 위치: 0%")), "Position slider reaches first interval"));
+        context.clickScreenButton("feedback_flag.timeline.fit"); context.clickScreenButton("+");
         context.waitTick(); context.takeScreenshot("timeline-zoom-ko");
         saveArchive(context, "Zoomed 20 ticks"); context.takeScreenshot("archive-saved-small-ko");
         context.clickScreenButton("feedback_flag.archive.view"); context.waitForScreen(TimelineScreen.class);

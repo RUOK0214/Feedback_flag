@@ -29,6 +29,16 @@ public final class TimelineViewport {
         double offset = (end - start) * direction;
         start += offset; end += offset; fit = follow = false; clamp();
     }
+    public double scrollPosition() {
+        double available = (double)scale.end() - scale.start() - (end - start);
+        return available <= 0 ? 0 : (start - scale.start()) / available;
+    }
+    public void scrollTo(double position) {
+        if (!Double.isFinite(position) || !canZoomOut()) return;
+        double span = end - start;
+        start = scale.start() + Math.clamp(position, 0, 1) * ((double)scale.end() - scale.start() - span);
+        end = start + span; fit = follow = false; clamp();
+    }
     private void clamp() {
         double span = Math.min(end - start, (double)scale.end() - scale.start());
         start = Math.clamp(start, scale.start(), scale.end() - span); end = start + span;

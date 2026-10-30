@@ -205,5 +205,6 @@
   "feedback_flag.archive.load_failed": "기록을 읽지 못했습니다. 파일을 확인한 뒤 새로고침하세요.",
   "feedback_flag.archive.empty": "아직 저장한 타임라인이 없습니다.",
   "feedback_flag.archive.library_hint": "기록을 선택하면 읽기 전용으로 엽니다.",
-  "feedback_flag.archive.invalid": "손상되었거나 지원하지 않는 기록 파일입니다. 원본은 유지됩니다."
+  "feedback_flag.archive.invalid": "손상되었거나 지원하지 않는 기록 파일입니다. 원본은 유지됩니다.",
+  "feedback_flag.timeline.position": "구간 위치: %s%%"
 }
