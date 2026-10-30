@@ -157,7 +157,7 @@ public final class FlagClientGameTest implements FabricClientGameTest {
     private static long searchResults(ClientGameTestContext context) {
         return context.computeOnClient(mc -> mc.gui.screen().children().stream()
                 .filter(net.minecraft.client.gui.components.Button.class::isInstance).map(net.minecraft.client.gui.components.Button.class::cast)
-                .filter(b -> b.visible && b.getY() >= 151 && b.getY() < mc.gui.screen().height - 29).count());
+                .filter(b -> b.visible && b.getWidth() > 24 && b.getY() >= 177 && b.getY() < mc.gui.screen().height - 29).count());
     }
     private static void testSearch(ClientGameTestContext context) {
         context.clickScreenButton("feedback_flag.search"); context.waitForScreen(FlagSearchScreen.class);
@@ -202,6 +202,92 @@ public final class FlagClientGameTest implements FabricClientGameTest {
                 && !button(mc, "feedback_flag.undo").active, "Single deletion Undo restores saved metadata once"));
         context.takeScreenshot("flag-undo-ko");
         context.getInput().resizeWindow(854, 480); context.waitTick();
+    }
+    private static void prepareBulk(ClientGameTestContext context) {
+        context.clickScreenButton(visibleLabel(context, "색상:"));
+        context.clickScreenButton(visibleLabel(context, "활성:")); context.clickScreenButton(visibleLabel(context, "활성:"));
+        context.clickScreenButton(visibleLabel(context, "태그:"));
+        context.runOnClient(mc -> {
+            var boxes = mc.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).toList();
+            boxes.get(0).setValue("F1AF15"); boxes.get(1).setValue("일괄 태그");
+        });
+    }
+    private static boolean hasButton(net.minecraft.client.Minecraft mc, String key) {
+        String label = net.minecraft.network.chat.Component.translatable(key).getString();
+        return mc.gui.screen() != null && mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
+                .map(net.minecraft.client.gui.components.Button.class::cast).anyMatch(b -> b.visible && b.active && b.getMessage().getString().equals(label));
+    }
+    private static void saveArchive(ClientGameTestContext context, String name) {
+        context.clickScreenButton("feedback_flag.archive.save"); context.waitForScreen(ArchiveSaveScreen.class);
+        context.runOnClient(mc -> mc.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).findFirst().orElseThrow().setValue(name));
+        context.clickScreenButton("feedback_flag.archive.save");
+        context.waitFor(mc -> hasButton(mc, "feedback_flag.archive.view"));
+    }
+    private static void testBulkAndArchives(ClientGameTestContext context) {
+        context.runOnClient(mc -> {
+            var manager = FeedbackFlagClient.manager; var book = manager.book();
+            for (int i = 0; i < 2; i++) {
+                var p = new net.minecraft.core.BlockPos(3 + i, 80, 4);
+                var f = book.add(manager.target(p), FlagManager.snapshot(mc.level.getBlockState(p)), "Batch " + (i == 0 ? "A" : "B"));
+                book.edit(f.id(), f.text(), "보존할 메모 " + i, java.util.List.of(i == 0 ? "입력" : "출력"), f.color(), true, true, true);
+            }
+        });
+        context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+        context.clickScreenButton("feedback_flag.search"); context.waitForScreen(FlagSearchScreen.class);
+        searchFields(context, "Batch", "", ""); context.clickScreenButton("feedback_flag.bulk.select_results");
+        check(visibleLabel(context, "선택 편집").contains("2"), "Select results includes flags on other pages");
+        context.takeScreenshot("bulk-selection-small-ko");
+        var before = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().data());
+        context.clickScreenButton(visibleLabel(context, "선택 편집")); context.waitForScreen(BulkEditScreen.class); prepareBulk(context);
+        context.waitTick(); context.takeScreenshot("bulk-edit-small-ko");
+        context.clickScreenButton("gui.cancel"); context.waitForScreen(FlagSearchScreen.class);
+        context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().data().equals(before), "Cancelling bulk edit changes nothing"));
+        context.clickScreenButton(visibleLabel(context, "선택 편집")); context.waitForScreen(BulkEditScreen.class); prepareBulk(context);
+        context.clickScreenButton(visibleLabel(context, "2개에 적용")); context.waitForScreen(FlagSearchScreen.class);
+        context.runOnClient(mc -> {
+            var book = FeedbackFlagClient.manager.book();
+            check(book.flags().stream().filter(f -> f.text().startsWith("Batch")).allMatch(f -> f.color() == 0xF1AF15 && !f.enabled()
+                    && f.tags().size() == 2 && f.tags().contains("일괄 태그") && f.memo().startsWith("보존할 메모")), "Bulk Apply changes only selected fields and preserves memos");
+            check(book.flags().stream().filter(f -> !f.text().startsWith("Batch")).allMatch(f -> f.enabled() && f.color() == 0x2489C7), "Bulk edit leaves unselected flag alone");
+            var a = book.flags().stream().filter(f -> f.text().equals("Batch A")).findFirst().orElseThrow();
+            book.edit(a.id(), a.text(), a.color(), true, true, true); book.clearHistory(null);
+            var stone = new FlagBook.Snapshot("minecraft:stone", java.util.Map.of()); var air = new FlagBook.Snapshot("minecraft:air", java.util.Map.of());
+            book.seed(a.target(), stone); book.observe(a.target(), air, 10, 1000); book.observe(a.target(), stone, 11, 1020); book.observe(a.target(), air, 12, 1040);
+        });
+        context.setScreen(() -> new DashboardScreen(FeedbackFlagClient.manager, null));
+        context.clickScreenButton("feedback_flag.timeline.open"); context.waitForScreen(TimelineScreen.class);
+        context.waitTick(); context.takeScreenshot("timeline-explorer-small-ko");
+        context.clickScreenButton("+");
+        check(visibleLabel(context, "▶ ").contains("20틱"), "Zoom shows the middle interval at its original relative tick");
+        context.waitTick(); context.takeScreenshot("timeline-zoom-ko");
+        saveArchive(context, "Zoomed 20 ticks"); context.takeScreenshot("archive-saved-small-ko");
+        context.clickScreenButton("feedback_flag.archive.view"); context.waitForScreen(TimelineScreen.class);
+        check(visibleLabel(context, "▶ ").contains("20틱"), "Saved interval preserves first-ever zero instead of rebasing");
+        context.clickScreenButton(visibleLabel(context, "▶ ")); context.clickScreenButton(visibleLabel(context, "↳ ")); context.waitForScreen(EventScreen.class);
+        context.runOnClient(mc -> check(!hasButton(mc, "feedback_flag.edit_title"), "Saved detail cannot edit the live flag"));
+        context.takeScreenshot("archive-event-detail-ko");
+        context.clickScreenButton("feedback_flag.back"); context.clickScreenButton("feedback_flag.back"); context.waitForScreen(ArchiveSaveScreen.class);
+        context.clickScreenButton("feedback_flag.back"); context.waitForScreen(TimelineScreen.class);
+        context.clickScreenButton("feedback_flag.timeline.fit"); saveArchive(context, "Full circuit run");
+        context.clickScreenButton("feedback_flag.archive.view"); context.waitForScreen(TimelineScreen.class);
+        context.runOnClient(mc -> FeedbackFlagClient.manager.book().clearHistory(null));
+        check(visibleLabel(context, "▶ ").contains("40틱"), "Archive remains intact after live timeline reset");
+        context.clickScreenButton("feedback_flag.archive.library"); context.waitForScreen(ArchiveLibraryScreen.class);
+        context.waitFor(mc -> mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
+                .map(net.minecraft.client.gui.components.Button.class::cast).anyMatch(b -> b.visible && b.getMessage().getString().startsWith("Full circuit run")));
+        context.waitTick(); context.takeScreenshot("archive-library-ko");
+        context.clickScreenButton(visibleLabel(context, "Full circuit run")); context.waitForScreen(TimelineScreen.class);
+        check(visibleLabel(context, "▶ ").contains("40틱"), "Library reopens the saved file");
+        context.runOnClient(mc -> {
+            try {
+                var files = ArchiveLibraryScreen.files(); var entry = files.list().stream().filter(e -> e.name().equals("Full circuit run")).findFirst().orElseThrow();
+                var archive = files.read(entry.folder()); check(archive.data().events().size() == 3, "Fit-all save includes every page");
+                var preview = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir().resolve("../../html-preview").normalize();
+                java.nio.file.Files.createDirectories(preview);
+                java.nio.file.Files.copy(entry.folder().resolve("timeline.html"), preview.resolve("timeline.html"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                check(files.list().stream().anyMatch(e -> e.name().equals("Zoomed 20 ticks") && e.events() == 1), "Zoomed save contains only that interval");
+            } catch (java.io.IOException ex) { throw new AssertionError(ex); }
+        });
     }
     private static void testModMenu(ClientGameTestContext context) {
         if (!net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("modmenu")) return;
@@ -491,6 +577,7 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             });
             check(searchResults(context) == 1, "Color swatch selects an exact RGB search");
             context.takeScreenshot("flag-search-color-ko");
+            testBulkAndArchives(context);
             testModMenu(context);
         }
     }

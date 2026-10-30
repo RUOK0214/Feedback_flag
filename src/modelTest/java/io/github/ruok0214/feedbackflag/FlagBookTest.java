@@ -17,6 +17,7 @@ public final class FlagBookTest {
     }
     public static void main(String[] args) throws Exception {
         recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos(); resetsAndTicks(); relativeGroupsAndTags(); visualSettingsAndRemoval(); searches(); undoDeletion();
+        bulkEditing(); timelineZoom(); archives();
         System.out.println("Feedback Flag: " + checks + " assertions passed.");
     }
     private static void recording() {
@@ -335,6 +336,82 @@ public final class FlagBookTest {
         var legacy = FlagBook.restore(new FlagBook.Data(4, true, 15, List.of(first), List.of(), 0));
         check(legacy.deletedCount() == 0 && legacy.flags().equals(List.of(first)), "old saves load with an empty undo slot");
         check(new BookStorage(storage.file().getParent(), "other-world").load().deletedCount() == 0, "undo is isolated by world storage");
+    }
+    private static void bulkEditing() {
+        var book = new FlagBook(); var a = book.add(TARGET, OFF, "A"); var b = book.add(new FlagBook.Target("minecraft:overworld", 4, 5, 6), ON, "B");
+        book.edit(a.id(), "A", "memo A", List.of("Input"), 0x123456, true, true, false);
+        book.edit(b.id(), "B", "memo B", List.of("Output"), 0x654321, false, false, true);
+        book.observe(TARGET, AIR, 5, 9); var beforeA = book.flag(a.id()); var beforeB = book.flag(b.id());
+        var keep = BulkEdit.Switch.KEEP;
+        var edit = new BulkEdit(0xABCDEF, BulkEdit.Switch.ON, keep, keep, BulkEdit.Tags.ADD, List.of("Circuit", "input"));
+        check(book.editAll(List.of(a.id(), b.id(), a.id()), edit) == 2, "bulk selection deduplicates identities");
+        var afterA = book.flag(a.id()); var afterB = book.flag(b.id());
+        check(afterA.color() == 0xABCDEF && afterB.color() == 0xABCDEF && afterB.enabled(), "bulk updates selected color and activation");
+        check(!afterA.watchProperties() && !afterB.watchBlocks(), "KEEP preserves differing detection settings");
+        check(afterA.memo().equals(beforeA.memo()) && afterB.text().equals(beforeB.text()) && afterA.total() == beforeA.total(), "bulk preserves names memos and counters");
+        check(afterA.tags().equals(List.of("Input", "Circuit")) && afterB.tags().equals(List.of("Output", "Circuit", "input")), "bulk adds tags without replacing existing ones");
+        check(book.baseline(TARGET).equals(AIR) && book.events().size() == 1, "bulk does not alter baselines or events");
+        long revision = book.revision(); book.editAll(List.of(a.id()), new BulkEdit(null, keep, keep, keep, BulkEdit.Tags.KEEP, List.of()));
+        check(book.revision() == revision, "all KEEP is a no-op");
+        book.editAll(List.of(a.id()), new BulkEdit(null, keep, keep, keep, BulkEdit.Tags.REMOVE, List.of("INPUT")));
+        check(book.flag(a.id()).tags().equals(List.of("Circuit")) && book.flag(b.id()).tags().contains("input"), "tag removal is exact case-insensitive and limited to selection");
+        book.edit(b.id(), "B", "memo B", List.of("1", "2", "3", "4", "5", "6", "7", "8"), b.color(), false, false, true);
+        var unchanged = book.data();
+        try { book.editAll(List.of(a.id(), b.id()), new BulkEdit(0, keep, keep, keep, BulkEdit.Tags.ADD, List.of("ninth"))); throw new AssertionError("partial edit accepted"); }
+        catch (IllegalArgumentException expected) { checks++; }
+        check(book.data().equals(unchanged), "overflow in later flag rolls back the entire bulk edit");
+        try { book.editAll(List.of(a.id(), java.util.UUID.randomUUID()), edit); throw new AssertionError("stale selection accepted"); }
+        catch (IllegalArgumentException expected) { checks++; }
+        check(book.data().equals(unchanged), "stale selection does not partially edit live flags");
+        book.editAll(List.of(a.id(), b.id()), new BulkEdit(null, keep, keep, keep, BulkEdit.Tags.REPLACE, List.of()));
+        check(book.flags().stream().allMatch(f -> f.tags().isEmpty()), "explicit empty replacement clears tags");
+    }
+    private static void timelineZoom() {
+        var view = new TimelineViewport(); view.update(new TimelineScale(true, 100, 200));
+        check(view.start() == 100 && view.end() == 200, "initial viewport fits all ticks");
+        view.zoom(.5, .5); check(view.start() == 125 && view.end() == 175, "zoom halves visible tick interval around center");
+        view.update(new TimelineScale(true, 100, 300));
+        check(view.start() == 125 && view.end() == 175, "live arrivals keep inspected interval fixed");
+        view.pan(-10); check(view.start() == 100 && view.end() == 150, "pan clamps at oldest event");
+        view.latest(); check(view.start() == 250 && view.end() == 300, "latest preserves zoom span");
+        view.update(new TimelineScale(true, 100, 320)); check(view.start() == 270 && view.end() == 320, "follow latest tracks arrivals");
+        view.zoom(.5, 1); check(view.end() == 320 && view.start() == 295, "anchored zoom retains cursor position");
+        view.reset(); check(view.start() == 100 && view.end() == 320, "fit all resets zoom");
+        view.update(new TimelineScale(false, 1, 10)); check(!view.worldTicks() && view.start() == 1 && view.end() == 10, "clock rollback resets to receipt-order interval");
+        view.update(new TimelineScale(true, 200, 200)); view.zoom(.5, .5); view.pan(1);
+        check(view.start() == 200 && view.end() == 200 && !view.canZoomIn(), "same-tick timeline remains finite");
+        view.update(new TimelineScale(true, 0, 0)); check(view.start() == 0 && view.end() == 0, "empty timeline safely resets bounds");
+    }
+    private static void archives() throws Exception {
+        var book = new FlagBook(); var a = book.add(TARGET, OFF, "Input");
+        book.observe(TARGET, ON, 100, 1000); var later = book.observe(TARGET, OFF, 101, 1020);
+        book.edit(a.id(), "Saved name", "메모\n</script><img src=x onerror=alert(1)>", List.of("Final tag"), 0x123456, true, true, true);
+        var archive = TimelineArchive.capture(book, List.of(later), "../실험 <script>", "World A");
+        check(archive.book().events().size() == 1 && archive.book().relativeTick(later) == 20, "archive selection retains original zero tick");
+        check(archive.book().events().getFirst().text().equals("Input") && archive.book().tags(later).equals(List.of("Final tag")), "archive preserves event name and save-time tags");
+        book.edit(a.id(), "Changed", "new memo", List.of("New"), 0, false, false, false); book.clearHistory(null);
+        check(archive.book().flag(a.id()).memo().startsWith("메모") && archive.book().events().size() == 1, "later edits and resets never change a capture");
+        check(archive.data().deleted().isEmpty(), "archive never imports a deletion undo slot");
+        Path root = Files.createTempDirectory(Path.of("build"), "archive-tests-"); var files = new TimelineFiles(root);
+        var saved = files.save(archive); check(saved.getParent().equals(root.toAbsolutePath()), "archive titles cannot escape the save directory");
+        check(files.read(saved).equals(archive), "archive JSON round trip");
+        var html = Files.readString(saved.resolve("timeline.html"));
+        check(html.contains("\\u003c/script\\u003e") && !html.contains("<img src=x"), "exported memo cannot escape JSON into executable HTML");
+        check(!html.contains("__TIMELINE_DATA__") && html.contains("Final tag"), "HTML includes its own immutable event data");
+        check(files.list().size() == 1 && files.list().getFirst().events() == 1, "library lists saved records with metadata");
+        var another = files.save(archive); check(!another.equals(saved) && files.list().size() == 2, "same named saves never overwrite each other");
+        var corrupt = Files.createDirectory(root.resolve("broken")); Files.writeString(corrupt.resolve("timeline.json"), "{broken");
+        check(files.list().size() == 3 && files.list().stream().filter(TimelineFiles.Entry::valid).count() == 2, "one corrupt file does not hide other archives");
+        try { files.read(corrupt); throw new AssertionError("corrupt archive accepted"); } catch (java.io.IOException expected) { checks++; }
+        try { files.read(root.getParent()); throw new AssertionError("outside path accepted"); } catch (java.io.IOException expected) { checks++; }
+        var detached = archive.book(); detached.clearHistory(null);
+        check(archive.book().events().size() == 1, "archive viewing uses a detached book");
+        try { new TimelineArchive("other-format", 1, "bad", "World", 0, archive.data()); throw new AssertionError("wrong format accepted"); }
+        catch (IllegalArgumentException expected) { checks++; }
+        var empty = TimelineArchive.capture(book, List.of(), "Empty", "World");
+        check(empty.book().events().isEmpty() && TimelineFiles.html(empty).contains("\"events\": []"), "empty archive remains readable");
+        var preview = Path.of("build", "html-preview"); Files.createDirectories(preview);
+        Files.writeString(preview.resolve("timeline.html"), html);
     }
     private static void storage() throws Exception {
         Path directory = Files.createTempDirectory(Path.of("build"), "flag-tests-");

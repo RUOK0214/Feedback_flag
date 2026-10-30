@@ -143,6 +143,18 @@ public final class FlagBook {
         flags.put(id, new Flag(id, old.target(), text, memo, color, active, blocks, properties, old.total(), old.lastTime(), tags));
         revision++;
     }
+    /** Validate the entire selection before changing anything. */
+    public int editAll(Collection<UUID> selection, BulkEdit edit) {
+        var changes = new LinkedHashMap<UUID, Flag>();
+        for (UUID id : new LinkedHashSet<>(selection)) {
+            var old = flags.get(id);
+            if (old == null) throw new IllegalArgumentException("Selected flag no longer exists");
+            var next = edit.apply(old);
+            if (!old.equals(next)) changes.put(id, next);
+        }
+        if (!changes.isEmpty()) { flags.putAll(changes); revision++; }
+        return changes.size();
+    }
     public void remove(UUID id) {
         Flag old = flags.remove(id);
         if (old == null) return;

@@ -11,18 +11,22 @@ import java.util.TreeSet;
 
 final class EventScreen extends FlagScreen {
     private final FlagManager manager;
+    private final FlagBook book;
     private final FlagBook.Event event;
     private final List<FormattedCharSequence> lines = new ArrayList<>();
     private int scroll, left, panelWidth;
     EventScreen(Screen parent, FlagManager manager, FlagBook.Event event) {
-        super("event_title", parent); this.manager = manager; this.event = event;
+        super("event_title", parent); this.manager = manager; this.book = manager.book(); this.event = event;
+    }
+    EventScreen(Screen parent, FlagBook book, FlagBook.Event event) {
+        super("event_title", parent); this.manager = null; this.book = book; this.event = event;
     }
     @Override protected void init() {
         panelWidth = Math.min(620, width - 28); left = (width - panelWidth) / 2;
         lines.clear();
         line(Component.literal(event.text() + "  ·  #" + event.sequence()).withColor(event.color()));
-        line(tr(event.worldTick() ? "event_tick" : "legacy_event_tick", manager.book().relativeTick(event)));
-        line(tr("event_tags", manager.book().tags(event).isEmpty() ? tr("untagged").getString() : String.join(", ", manager.book().tags(event))));
+        line(tr(event.worldTick() ? "event_tick" : "legacy_event_tick", book.relativeTick(event)));
+        line(tr("event_tags", book.tags(event).isEmpty() ? tr("untagged").getString() : String.join(", ", book.tags(event))));
         line(Component.literal(event.target().dimension() + " · " + event.target().coordinates()));
         line(tr("kind." + event.kind().name().toLowerCase(java.util.Locale.ROOT)));
         line(Component.empty());
@@ -38,16 +42,16 @@ final class EventScreen extends FlagScreen {
             String after = event.after().properties().getOrDefault(name, "—");
             if (!before.equals(after)) line(Component.literal(name + ": " + before + " → " + after));
         }
-        var flag = manager.book().flag(event.flagId());
+        var flag = book.flag(event.flagId());
         if (flag != null && !flag.memo().isBlank()) {
-            line(Component.empty()); line(tr("memo_current"));
+            line(Component.empty()); line(tr(manager == null ? "archive.memo" : "memo_current"));
             for (String paragraph : flag.memo().split("\n", -1)) line(Component.literal(paragraph));
         }
         line(Component.empty()); line(tr("observation_note"));
-        button(tr("back"), left, height - 28, (panelWidth - 6) / 2, this::onClose);
-        button(tr("edit_title"), left + (panelWidth + 6) / 2, height - 28, (panelWidth - 6) / 2,
+        button(tr("back"), left, height - 28, manager == null ? panelWidth : (panelWidth - 6) / 2, this::onClose);
+        if (manager != null) button(tr("edit_title"), left + (panelWidth + 6) / 2, height - 28, (panelWidth - 6) / 2,
                 () -> minecraft.gui.setScreen(new FlagEditScreen(this, manager, event.flagId())))
-                .active = manager.book().flag(event.flagId()) != null;
+                .active = book.flag(event.flagId()) != null;
         clampScroll();
     }
     private void line(Component text) {

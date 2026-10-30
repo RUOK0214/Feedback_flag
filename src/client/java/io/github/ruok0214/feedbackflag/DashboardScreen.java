@@ -65,6 +65,11 @@ public final class DashboardScreen extends FlagScreen {
                     minecraft.gui.setScreen(this);
                 }, tr(filter == null ? "clear_history_title" : "clear_flag_history_title"), tr("clear_history_hint"))));
         clearHistory.setTooltip(Tooltip.create(tr("clear_filter_hint")));
+        addRenderableWidget(Button.builder(tr("timeline.open"), b -> minecraft.gui.setScreen(new TimelineScreen(this, manager, manager.book(), filter, tagFilter,
+                minecraft.getSingleplayerServer() != null ? minecraft.getSingleplayerServer().getWorldData().getLevelName() : minecraft.getCurrentServer() != null ? minecraft.getCurrentServer().ip : "World")))
+                .bounds(rightX + rightWidth - 136, 104, 66, 17).build());
+        addRenderableWidget(Button.builder(tr("archive.library"), b -> minecraft.gui.setScreen(new ArchiveLibraryScreen(this)))
+                .bounds(rightX + rightWidth - 66, 104, 66, 17).build());
         removeAll = addRenderableWidget(Button.builder(tr("remove_all"), ignored -> minecraft.gui.setScreen(new ConfirmScreen(confirmed -> {
             if (confirmed) { manager.removeAllFlags(); flagPage = 0; }
             minecraft.gui.setScreen(this);
@@ -160,7 +165,7 @@ public final class DashboardScreen extends FlagScreen {
     }
     private int dotX(TickGroup group) { return rightX + 7 + (int)(scale.position(group.representative()) * (rightWidth - 14)); }
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean twice) {
-        if (event.button() == 0 && event.y() >= 119 && event.y() <= 138) {
+        if (event.button() == 0 && event.y() >= 122 && event.y() <= 138) {
             for (var group : visibleGroups) if (Math.abs(event.x() - dotX(group)) <= 5) {
                 if (!expanded.add(group.id())) expanded.remove(group.id());
                 for (int i = 0; i < rows.size(); i++) if (rows.get(i).group().id() == group.id()) { rowOffset = i; break; }
@@ -185,7 +190,7 @@ public final class DashboardScreen extends FlagScreen {
         text(g, summary, rightX, 86, rightWidth - clearWidth - 6, error == null ? MUTED : 0xFFFF8888);
         if (x >= rightX && x < rightX + rightWidth - clearWidth && y >= 80 && y < 100) g.setTooltipForNextFrame(summary, x, y);
         text(g, tr("flags_short"), 10, 109, leftWidth - 68, WHITE);
-        text(g, tr(filter == null ? "timeline" : "filtered_timeline"), rightX, 109, rightWidth, WHITE);
+        text(g, tr(filter == null ? "timeline" : "filtered_timeline"), rightX, 109, rightWidth - 140, WHITE);
         if (flags.isEmpty()) g.textWithWordWrap(font, tr("no_flags"), 12, 154, leftWidth - 4, MUTED);
         else for (int i = 0; i < flagRows; i++) {
             int index = flagPage * flagRows + i; if (index >= flags.size()) break;
