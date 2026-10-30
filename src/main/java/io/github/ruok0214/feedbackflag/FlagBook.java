@@ -37,7 +37,12 @@ public final class FlagBook {
         public Event { tags = cleanTags(tags); }
     }
     public record Data(int version, boolean enabled, int transparency, List<Flag> flags, List<Event> events,
-                       long sequence, DisplayMode displayMode, Long tickOrigin, Long legacyTickOrigin, VisualSettings visuals) {
+                       long sequence, DisplayMode displayMode, Long tickOrigin, Long legacyTickOrigin, VisualSettings visuals,
+                       List<Flag> deleted) {
+        public Data(int version, boolean enabled, int transparency, List<Flag> flags, List<Event> events, long sequence,
+                    DisplayMode displayMode, Long tickOrigin, Long legacyTickOrigin, VisualSettings visuals) {
+            this(version, enabled, transparency, flags, events, sequence, displayMode, tickOrigin, legacyTickOrigin, visuals, List.of());
+        }
         public Data(int version, boolean enabled, int transparency, List<Flag> flags, List<Event> events, long sequence) {
             this(version, enabled, transparency, flags, events, sequence, DisplayMode.FLAGS, null, null, VisualSettings.DEFAULT);
         }
@@ -47,6 +52,8 @@ public final class FlagBook {
     private final Map<Target, UUID> targets = new HashMap<>();
     private final Map<Target, Snapshot> baselines = new HashMap<>();
     private final ArrayDeque<Event> events = new ArrayDeque<>();
+    private List<Flag> deleted = List.of();
+    public enum UndoStatus { READY, EMPTY, CONFLICT, LIMIT }
     private boolean enabled = true;
     private int transparency = 15;
     private long sequence, revision;
@@ -90,6 +97,21 @@ public final class FlagBook {
     }
     public int transparency() { return transparency; }
     public long revision() { return revision; }
+    public int deletedCount() { return deleted.size(); }
+    public UndoStatus undoStatus() {
+        if (deleted.isEmpty()) return UndoStatus.EMPTY;
+        if (deleted.stream().anyMatch(f -> flags.containsKey(f.id()) || targets.containsKey(f.target()))) return UndoStatus.CONFLICT;
+        return flags.size() + deleted.size() > MAX_FLAGS ? UndoStatus.LIMIT : UndoStatus.READY;
+    }
+    /** Restores the last deletion as one operation. Never overwrites a new flag or replays missed changes. */
+    public boolean undoDeletion() {
+        if (undoStatus() != UndoStatus.READY) return false;
+        for (var flag : deleted) {
+            flags.put(flag.id(), flag); targets.put(flag.target(), flag.id()); baselines.remove(flag.target());
+        }
+        deleted = List.of(); revision++;
+        return true;
+    }
     public void setEnabled(boolean value) { if (enabled != value) { enabled = value; revision++; } }
     public void setTransparency(int value) {
         int next = Math.clamp(value, 0, 100);
@@ -124,6 +146,7 @@ public final class FlagBook {
     public void remove(UUID id) {
         Flag old = flags.remove(id);
         if (old == null) return;
+        deleted = List.of(old);
         targets.remove(old.target()); baselines.remove(old.target()); revision++;
         // Retain the last assigned tags when the live flag is removed.
         var retained = new ArrayDeque<Event>();
@@ -135,6 +158,7 @@ public final class FlagBook {
     /** Removes every live flag while retaining the timeline and the final tags of removed flags. */
     public void removeAllFlags() {
         if (flags.isEmpty()) return;
+        deleted = flags();
         var retained = new ArrayDeque<Event>();
         for (var event : events) {
             var flag = flags.get(event.flagId());
@@ -147,6 +171,15 @@ public final class FlagBook {
     /** Clears all history, or just one flag's, without interrupting observation or changing settings. */
     public void clearHistory(UUID id) {
         boolean changed = events.removeIf(event -> id == null || id.equals(event.flagId()));
+        var pending = new ArrayList<Flag>();
+        for (var flag : deleted) {
+            if ((id == null || id.equals(flag.id())) && (flag.total() != 0 || flag.lastTime() != 0)) {
+                pending.add(new Flag(flag.id(), flag.target(), flag.text(), flag.memo(), flag.color(), flag.enabled(),
+                        flag.watchBlocks(), flag.watchProperties(), 0, 0, flag.tags()));
+                changed = true;
+            } else pending.add(flag);
+        }
+        deleted = List.copyOf(pending);
         for (var flag : flags()) {
             if ((id == null || id.equals(flag.id())) && (flag.total() != 0 || flag.lastTime() != 0)) {
                 flags.put(flag.id(), new Flag(flag.id(), flag.target(), flag.text(), flag.memo(), flag.color(),
@@ -183,9 +216,9 @@ public final class FlagBook {
         revision++;
         return event;
     }
-    public Data data() { return new Data(4, enabled, transparency, flags(), events(), sequence, displayMode, tickOrigin, legacyTickOrigin, visuals); }
+    public Data data() { return new Data(5, enabled, transparency, flags(), events(), sequence, displayMode, tickOrigin, legacyTickOrigin, visuals, deleted); }
     public static FlagBook restore(Data data) {
-        if (data == null || (data.version() < 1 || data.version() > 4) || data.flags() == null || data.events() == null)
+        if (data == null || (data.version() < 1 || data.version() > 5) || data.flags() == null || data.events() == null)
             throw new IllegalArgumentException("Unsupported or incomplete history");
         if (data.flags().size() > MAX_FLAGS || data.events().size() > MAX_EVENTS)
             throw new IllegalArgumentException("History limits exceeded");
@@ -195,6 +228,15 @@ public final class FlagBook {
             if (flag == null || book.flags.putIfAbsent(flag.id(), flag) != null
                     || book.targets.putIfAbsent(flag.target(), flag.id()) != null)
                 throw new IllegalArgumentException("Invalid or duplicate flag");
+        }
+        if (data.deleted() != null) {
+            if (data.deleted().size() > MAX_FLAGS) throw new IllegalArgumentException("Undo limit exceeded");
+            var ids = new HashSet<UUID>(); var positions = new HashSet<Target>();
+            for (var flag : data.deleted()) {
+                if (flag == null || !ids.add(flag.id()) || !positions.add(flag.target()) || book.flags.containsKey(flag.id()))
+                    throw new IllegalArgumentException("Invalid or duplicate deleted flag");
+            }
+            book.deleted = List.copyOf(data.deleted());
         }
         long last = 0;
         for (Event event : data.events()) {

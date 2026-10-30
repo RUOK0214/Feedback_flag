@@ -23,7 +23,7 @@ public final class DashboardScreen extends FlagScreen {
     private List<Row> rows = List.of();
     private final Set<Long> expanded = new HashSet<>();
     private final List<Button> flagButtons = new ArrayList<>(), eventButtons = new ArrayList<>();
-    private Button flagPrevious, flagNext, eventPrevious, eventNext, clearHistory, tagButton, removeAll;
+    private Button flagPrevious, flagNext, eventPrevious, eventNext, clearHistory, tagButton, removeAll, undo;
     private TimelineScale scale = TimelineScale.of(List.of());
     private int clearWidth;
     private long revision = -1;
@@ -70,11 +70,16 @@ public final class DashboardScreen extends FlagScreen {
             minecraft.gui.setScreen(this);
         }, tr("remove_all_title", manager.book().flags().size()), tr("remove_all_hint"))))
                 .bounds(10 + leftWidth - 64, 104, 64, 17).build());
-        flagRows = Math.max(1, (height - 151) / 27);
+        int searchWidth = (leftWidth - 4) / 2;
+        button(tr("search"), 10, 124, searchWidth, () -> minecraft.gui.setScreen(new FlagSearchScreen(this, manager)));
+        undo = button(tr("undo"), 14 + searchWidth, 124, leftWidth - searchWidth - 4, () -> {
+            if (manager.book().undoDeletion()) { manager.save(); flagPage = 0; refresh(false); }
+        });
+        flagRows = Math.max(1, (height - 177) / 27);
         eventRows = Math.max(1, (height - 184) / 26);
         for (int i = 0; i < flagRows; i++) {
             final int row = i;
-            flagButtons.add(button(Component.empty(), 10, 124 + i * 27, leftWidth, () -> {
+            flagButtons.add(button(Component.empty(), 10, 150 + i * 27, leftWidth, () -> {
                 int index = flagPage * flagRows + row;
                 if (index < flags.size()) minecraft.gui.setScreen(new FlagEditScreen(this, manager, flags.get(index).id()));
             }));
@@ -115,6 +120,8 @@ public final class DashboardScreen extends FlagScreen {
         scale = TimelineScale.of(visibleGroups.stream().map(TickGroup::representative).toList());
         tagButton.setMessage(tagLabel());
         removeAll.active = !flags.isEmpty();
+        undo.active = manager.book().undoStatus() == FlagBook.UndoStatus.READY;
+        undo.setTooltip(Tooltip.create(tr("undo." + manager.book().undoStatus().name().toLowerCase(Locale.ROOT), manager.book().deletedCount())));
         clearHistory.active = manager.book().events().stream().anyMatch(e -> filter == null || filter.equals(e.flagId()))
                 || flags.stream().anyMatch(f -> (filter == null || filter.equals(f.id())) && f.total() != 0);
         for (int i = 0; i < flagButtons.size(); i++) {
@@ -179,11 +186,11 @@ public final class DashboardScreen extends FlagScreen {
         if (x >= rightX && x < rightX + rightWidth - clearWidth && y >= 80 && y < 100) g.setTooltipForNextFrame(summary, x, y);
         text(g, tr("flags_short"), 10, 109, leftWidth - 68, WHITE);
         text(g, tr(filter == null ? "timeline" : "filtered_timeline"), rightX, 109, rightWidth, WHITE);
-        if (flags.isEmpty()) g.textWithWordWrap(font, tr("no_flags"), 12, 128, leftWidth - 4, MUTED);
+        if (flags.isEmpty()) g.textWithWordWrap(font, tr("no_flags"), 12, 154, leftWidth - 4, MUTED);
         else for (int i = 0; i < flagRows; i++) {
             int index = flagPage * flagRows + i; if (index >= flags.size()) break;
             String status = manager.status(flags.get(index));
-            g.fill(11, 125 + i * 27, 14, 143 + i * 27, status.equals("watching") ? 0xFF66D9A0 : status.equals("paused") ? 0xFFDAAD60 : 0xFF697586);
+            g.fill(11, 151 + i * 27, 14, 169 + i * 27, status.equals("watching") ? 0xFF66D9A0 : status.equals("paused") ? 0xFFDAAD60 : 0xFF697586);
         }
         g.horizontalLine(rightX + 5, rightX + rightWidth - 5, 128, 0xFF48647F);
         for (var group : visibleGroups.reversed()) {

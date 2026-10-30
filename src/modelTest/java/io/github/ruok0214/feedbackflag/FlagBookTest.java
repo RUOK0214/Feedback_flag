@@ -16,7 +16,7 @@ public final class FlagBookTest {
         checks++; if (!condition) throw new AssertionError(message);
     }
     public static void main(String[] args) throws Exception {
-        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos(); resetsAndTicks(); relativeGroupsAndTags(); visualSettingsAndRemoval();
+        recording(); pausesAndFilters(); observationGaps(); retention(); storage(); memos(); resetsAndTicks(); relativeGroupsAndTags(); visualSettingsAndRemoval(); searches(); undoDeletion();
         System.out.println("Feedback Flag: " + checks + " assertions passed.");
     }
     private static void recording() {
@@ -271,6 +271,70 @@ public final class FlagBookTest {
         check(!readded.id().equals(second.id()) && book.observe(nether, ON, 103, 1007) == null, "readding after remove-all starts a fresh flag without invented changes");
         book.clearHistory(null);
         check(book.visuals().equals(visuals) && book.flags().size() == 1, "timeline reset leaves appearance and live flags alone");
+    }
+    private static void searches() {
+        var book = new FlagBook(); var flag = book.add(TARGET, OFF, "회로 Signal A");
+        book.edit(flag.id(), flag.text(), "memo is not a name", List.of("입력", "Circuit A"), 0x2489C7, true, true, true);
+        flag = book.flag(flag.id()); var names = List.of("light_blue", "light blue", "하늘");
+        check(new FlagSearch("회로 signal", "하늘", "입력, CIRCUIT", FlagSearch.Activation.ENABLED).matches(flag, names), "all search criteria intersect with Korean and case folding");
+        check(new FlagSearch("", "#2489c7", "", null).matches(flag, names), "custom hex search is case insensitive");
+        check(new FlagSearch("", "2489C7", "", null).matches(flag, List.of()), "hex searches custom colors without palette names");
+        check(new FlagSearch("", "light b", "", null).matches(flag, names), "partial English palette name");
+        check(!new FlagSearch("", "#2489C8", "", null).matches(flag, names), "different RGB excluded");
+        check(!new FlagSearch("", "#248", "", null).matches(flag, names), "incomplete RGB yields no results");
+        check(!new FlagSearch("memo", "", "", null).matches(flag, names), "name search does not accidentally search memos");
+        check(!new FlagSearch("", "", "입력, 출력", null).matches(flag, names), "each comma separated tag must match");
+        check(!new FlagSearch("", "", "", FlagSearch.Activation.DISABLED).matches(flag, names), "inactive filter excludes active flags");
+        book.setEnabled(false);
+        check(new FlagSearch("", "", "", FlagSearch.Activation.ENABLED).matches(flag, names), "global pause does not change individual activation search");
+        book.edit(flag.id(), flag.text(), flag.color(), false, true, true);
+        check(new FlagSearch(null, null, null, FlagSearch.Activation.DISABLED).matches(book.flag(flag.id()), names), "disabled filter matches own switch");
+        check(new FlagSearch("  ", "", ", ,", null).matches(flag, names), "empty criteria show all flags");
+    }
+    private static void undoDeletion() throws Exception {
+        var book = new FlagBook(); var first = book.add(TARGET, OFF, "Restore me");
+        check(book.undoStatus() == FlagBook.UndoStatus.EMPTY && !book.undoDeletion(), "fresh book has no undo");
+        book.edit(first.id(), first.text(), "메모\n두 줄", List.of("입력"), 0x123456, true, false, true);
+        var event = book.observe(TARGET, ON, 42, 300); first = book.flag(first.id());
+        var storage = new BookStorage(Files.createTempDirectory(Path.of("build"), "undo-tests-"), "world");
+        book.remove(first.id()); long revision = book.revision();
+        book.remove(first.id()); book.removeAllFlags();
+        check(book.revision() == revision && book.deletedCount() == 1, "no-op deletion keeps pending undo");
+        storage.save(book); book = storage.load();
+        check(book.deletedCount() == 1 && book.undoStatus() == FlagBook.UndoStatus.READY, "deletion survives restart");
+        check(book.undoDeletion() && book.flag(first.id()).equals(first), "single undo restores UUID, position, text, memo, tags, settings and counters");
+        check(book.events().size() == 1 && book.relativeTick(event) == 0 && book.baseline(TARGET) == null, "undo keeps history and origin without restoring stale baseline");
+        check(book.observe(TARGET, OFF, 43, 301) == null && book.observe(TARGET, ON, 44, 302) != null, "undo observes a fresh baseline and records only later changes");
+        check(!book.undoDeletion() && book.deletedCount() == 0, "undo can only be used once");
+        var other = new FlagBook.Target("minecraft:the_nether", 1, 2, 3);
+        book.add(other, OFF, "Other dimension"); var originals = book.flags();
+        book.setEnabled(false); book.setTransparency(67); book.setDisplayMode(FlagBook.DisplayMode.BOTH);
+        book.removeAllFlags(); storage.save(book); book = storage.load();
+        var dataBeforeUndo = book.data();
+        check(book.deletedCount() == 2 && book.undoDeletion() && book.flags().equals(originals), "bulk undo restores all dimensions atomically after restart");
+        check(!book.enabled() && book.transparency() == 67 && book.displayMode() == FlagBook.DisplayMode.BOTH
+                && book.data().tickOrigin().equals(dataBeforeUndo.tickOrigin()), "undo preserves current world settings and tick origin");
+        book.removeAllFlags(); var replacement = book.add(TARGET, OFF, "New occupant"); var blocked = book.data();
+        check(book.undoStatus() == FlagBook.UndoStatus.CONFLICT && !book.undoDeletion() && book.data().equals(blocked), "coordinate conflict preserves new flag and complete undo snapshot");
+        storage.save(book); book = storage.load();
+        check(book.undoStatus() == FlagBook.UndoStatus.CONFLICT && book.at(TARGET).id().equals(replacement.id()), "conflict stays safe across restart");
+        book.remove(replacement.id());
+        check(book.deletedCount() == 1 && book.undoDeletion() && book.flags().size() == 1, "next actual deletion replaces the previous undo slot");
+        book = new FlagBook(); first = book.add(TARGET, OFF, "Deleted counter"); book.observe(TARGET, ON, 7, 8);
+        book.remove(first.id()); book.clearHistory(null);
+        check(book.undoDeletion() && book.flag(first.id()).total() == 0 && book.flag(first.id()).lastTime() == 0 && book.events().isEmpty(), "undo never restores counters erased by history reset");
+        book.seed(TARGET, ON); var afterReset = book.observe(TARGET, OFF, 9, 10);
+        check(book.relativeTick(afterReset) == 0, "history reset still establishes a new tick origin after undo");
+        book.remove(first.id());
+        for (int i = 0; i < FlagBook.MAX_FLAGS; i++) book.add(new FlagBook.Target("minecraft:overworld", i, 10, 0), OFF, "New " + i);
+        var full = book.data();
+        check(book.undoStatus() == FlagBook.UndoStatus.LIMIT && !book.undoDeletion() && book.data().equals(full), "undo respects capacity without partial restore");
+        var invalid = new FlagBook.Data(5, true, 15, List.of(), List.of(), 0, null, null, null, null, List.of(first, first));
+        try { FlagBook.restore(invalid); throw new AssertionError("duplicate undo accepted"); }
+        catch (IllegalArgumentException expected) { checks++; }
+        var legacy = FlagBook.restore(new FlagBook.Data(4, true, 15, List.of(first), List.of(), 0));
+        check(legacy.deletedCount() == 0 && legacy.flags().equals(List.of(first)), "old saves load with an empty undo slot");
+        check(new BookStorage(storage.file().getParent(), "other-world").load().deletedCount() == 0, "undo is isolated by world storage");
     }
     private static void storage() throws Exception {
         Path directory = Files.createTempDirectory(Path.of("build"), "flag-tests-");

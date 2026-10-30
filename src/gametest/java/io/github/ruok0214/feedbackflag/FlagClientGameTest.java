@@ -148,6 +148,83 @@ public final class FlagClientGameTest implements FabricClientGameTest {
         });
         context.getInput().resizeWindow(1000, 700); context.waitTick();
     }
+    private static void searchFields(ClientGameTestContext context, String name, String color, String tags) {
+        context.runOnClient(mc -> {
+            var boxes = mc.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).toList();
+            boxes.get(0).setValue(name); boxes.get(1).setValue(color); boxes.get(2).setValue(tags);
+        });
+    }
+    private static long searchResults(ClientGameTestContext context) {
+        return context.computeOnClient(mc -> mc.gui.screen().children().stream()
+                .filter(net.minecraft.client.gui.components.Button.class::isInstance).map(net.minecraft.client.gui.components.Button.class::cast)
+                .filter(b -> b.visible && b.getY() >= 151 && b.getY() < mc.gui.screen().height - 29).count());
+    }
+    private static void testSearch(ClientGameTestContext context) {
+        context.clickScreenButton("feedback_flag.search"); context.waitForScreen(FlagSearchScreen.class);
+        searchFields(context, "signal", "#56c8e8", "입력, 공통");
+        context.clickScreenButton("feedback_flag.search_active.all");
+        check(searchResults(context) == 1 && visibleLabel(context, "Signal A").contains("활성"), "Four search fields intersect in the real UI");
+        context.waitTick(); context.takeScreenshot("flag-search-ko");
+        context.getInput().resizeWindow(1000, 700); context.waitTick();
+        check(searchResults(context) == 1, "Search draft survives resize");
+        context.clickScreenButton(visibleLabel(context, "Signal A")); context.waitForScreen(FlagEditScreen.class);
+        context.clickScreenButton("gui.cancel"); context.waitForScreen(FlagSearchScreen.class);
+        check(searchResults(context) == 1, "Returning from editor keeps search criteria");
+        context.clickScreenButton("feedback_flag.search_active.enabled");
+        check(searchResults(context) == 0, "Inactive filter excludes enabled flag");
+        context.waitTick(); context.takeScreenshot("flag-search-empty-ko");
+        context.clickScreenButton("feedback_flag.search_reset");
+        context.runOnClient(mc -> {
+            var book = FeedbackFlagClient.manager.book(); var flag = book.flags().getFirst();
+            book.edit(flag.id(), flag.text(), flag.color(), false, true, true);
+        });
+        context.clickScreenButton("feedback_flag.search_active.all");
+        context.clickScreenButton("feedback_flag.search_active.enabled");
+        check(searchResults(context) == 1 && visibleLabel(context, "Signal A").contains("비활성"), "Disabled flag is found after data change");
+        context.clickScreenButton("feedback_flag.search_reset");
+        context.runOnClient(mc -> {
+            var book = FeedbackFlagClient.manager.book(); var flag = book.flags().getFirst();
+            book.edit(flag.id(), flag.text(), flag.color(), true, true, true);
+        });
+        searchFields(context, "", "없는색", ""); check(searchResults(context) == 0, "Unknown color gives empty results");
+        searchFields(context, "", "56C8E8", ""); check(searchResults(context) == 1, "Custom RGB color without hash finds flag");
+        context.clickScreenButton("feedback_flag.search_reset");
+        context.clickScreenButton("feedback_flag.back"); context.waitForScreen(DashboardScreen.class);
+        var deleted = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().flags().getFirst());
+        context.setScreen(() -> new FlagEditScreen(new DashboardScreen(FeedbackFlagClient.manager, null), FeedbackFlagClient.manager, deleted.id()));
+        context.clickScreenButton("feedback_flag.delete"); context.waitForScreen(net.minecraft.client.gui.screens.ConfirmScreen.class);
+        context.clickScreenButton("gui.no"); context.waitForScreen(FlagEditScreen.class);
+        context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flag(deleted.id()).equals(deleted), "Cancel single deletion preserves metadata"));
+        context.clickScreenButton("feedback_flag.delete"); context.waitForScreen(net.minecraft.client.gui.screens.ConfirmScreen.class);
+        context.clickScreenButton("gui.yes"); context.waitForScreen(DashboardScreen.class);
+        context.clickScreenButton("feedback_flag.undo"); context.waitTick();
+        context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flag(deleted.id()).equals(deleted)
+                && !button(mc, "feedback_flag.undo").active, "Single deletion Undo restores saved metadata once"));
+        context.takeScreenshot("flag-undo-ko");
+        context.getInput().resizeWindow(854, 480); context.waitTick();
+    }
+    private static void testModMenu(ClientGameTestContext context) {
+        if (!net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("modmenu")) return;
+        context.getInput().resizeWindow(1000, 700);
+        context.runOnClient(mc -> {
+            try {
+                Class<?> type = Class.forName("com.terraformersmc.modmenu.gui.ModsScreen");
+                mc.gui.setScreen((net.minecraft.client.gui.screens.Screen) type.getConstructor(net.minecraft.client.gui.screens.Screen.class).newInstance((Object)null));
+                mc.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).findFirst().orElseThrow().setValue("Feedback Flag");
+                var list = mc.gui.screen().children().stream().filter(w -> w.getClass().getSimpleName().equals("ModListWidget")).findFirst().orElseThrow();
+                var entry = list.getClass().getMethod("getEntry", int.class).invoke(list, 0);
+                var entryType = Class.forName("com.terraformersmc.modmenu.gui.widget.entries.ModListEntry");
+                list.getClass().getMethod("select", entryType).invoke(list, entry);
+                Object mod = entryType.getMethod("getMod").invoke(entry);
+                var modType = Class.forName("com.terraformersmc.modmenu.util.mod.Mod");
+                check(modType.getMethod("getId").invoke(mod).equals("feedback_flag"), "Mod Menu finds Feedback Flag");
+                String description = (String) modType.getMethod("getTranslatedDescription").invoke(mod);
+                check(description.contains("개인용 플래그") && description.contains("/feedbackflag"), "Mod Menu reads localized Korean description");
+                check(!entryType.getMethod("getIconTexture").invoke(entry).equals(entryType.getField("UNKNOWN_ICON").get(null)), "Mod Menu loads the custom icon");
+            } catch (ReflectiveOperationException ex) { throw new AssertionError("Mod Menu integration", ex); }
+        });
+        context.waitTicks(3); context.takeScreenshot("mod-menu-ko");
+    }
     @Override public void runTest(ClientGameTestContext context) {
         context.getInput().resizeWindow(1000, 700);
         try (var world = context.worldBuilder().create()) {
@@ -371,6 +448,7 @@ public final class FlagClientGameTest implements FabricClientGameTest {
             world.getConnection().waitForChunksRender();
             context.waitTicks(5); context.takeScreenshot("world-flags");
             testAppearance(context);
+            testSearch(context);
             var beforeRemoval = context.computeOnClient(mc -> FeedbackFlagClient.manager.book().data());
             var observedBlock = context.computeOnClient(mc -> FlagManager.snapshot(mc.level.getBlockState(new net.minecraft.core.BlockPos(2, 80, 0))));
             context.runOnClient(mc -> FeedbackFlagClient.manager.startPlacing());
@@ -390,9 +468,30 @@ public final class FlagClientGameTest implements FabricClientGameTest {
                 check(FlagManager.snapshot(mc.level.getBlockState(new net.minecraft.core.BlockPos(2, 80, 0))).equals(observedBlock), "All-removal never modifies actual blocks");
                 check(FeedbackFlagClient.manager.save(), "All-removal persists");
             });
+            context.clickScreenButton("feedback_flag.undo"); context.waitTick();
+            context.runOnClient(mc -> {
+                var book = FeedbackFlagClient.manager.book();
+                check(book.flags().equals(beforeRemoval.flags()) && book.events().size() == beforeRemoval.events().size(), "Bulk undo restores every flag without duplicating history");
+                check(!button(mc, "feedback_flag.undo").active && !FeedbackFlagClient.extractMarkers().isEmpty(), "Bulk undo consumes the snapshot and restores markers");
+            });
+            context.takeScreenshot("all-flags-restored-ko");
+            context.clickScreenButton("feedback_flag.remove_all"); context.waitForScreen(net.minecraft.client.gui.screens.ConfirmScreen.class);
+            context.clickScreenButton("gui.yes"); context.waitForScreen(DashboardScreen.class);
             context.setScreen(() -> null); aim(context, 2.5, 81, .5);
             command(context, "feedbackflag add"); edit(context, "After removal", "2489C7");
             context.runOnClient(mc -> check(FeedbackFlagClient.manager.book().flags().size() == 1, "Flags can be added normally after all-removal"));
+            context.runOnClient(mc -> check(!button(mc, "feedback_flag.undo").active
+                    && FeedbackFlagClient.manager.book().undoStatus() == FlagBook.UndoStatus.CONFLICT, "New flag at a restore position disables Undo"));
+            context.clickScreenButton("feedback_flag.search"); context.waitForScreen(FlagSearchScreen.class);
+            searchFields(context, "", "하늘", ""); check(searchResults(context) == 1, "Localized basic color searches live flag");
+            context.runOnClient(mc -> {
+                var swatch = mc.gui.screen().children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
+                        .map(net.minecraft.client.gui.components.Button.class::cast).filter(b -> b.getMessage().getString().equals("■")).toList().get(3);
+                swatch.onPress(new net.minecraft.client.input.KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
+            });
+            check(searchResults(context) == 1, "Color swatch selects an exact RGB search");
+            context.takeScreenshot("flag-search-color-ko");
+            testModMenu(context);
         }
     }
 }
