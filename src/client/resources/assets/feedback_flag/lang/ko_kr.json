@@ -149,7 +149,7 @@
   "feedback_flag.undo.conflict": "복원할 위치에 새 플래그가 있어 되돌릴 수 없습니다. 새 플래그를 덮어쓰지 않습니다.",
   "feedback_flag.undo.limit": "복원하면 플래그 상한 128개를 넘습니다. 현재 삭제 내역은 보관됩니다.",
   "modmenu.summaryTranslation.feedback_flag": "블록의 변화를 플래그와 상대 틱 타임라인으로 확인합니다.",
-  "modmenu.descriptionTranslation.feedback_flag": "블록에 개인용 플래그를 꽂아 블록 종류와 상태 변화를 기록합니다. 플래그·블록 윤곽선 표시, 이름·색상·태그·메모, 검색, 마지막 삭제 복원과 첫 변화가 0틱인 타임라인을 지원합니다.\n\n/feedbackflag 또는 /ff로 메뉴를 엽니다. 메뉴 열기와 플래그 꽂기 단축키는 기본 미지정입니다. 서버에 설치할 필요 없이 클라이언트가 받은 블록 변화만 기록합니다.",
+  "modmenu.descriptionTranslation.feedback_flag": "개인용 플래그로 블록 변화를 기록하고, 첫 변화가 0틱인 타임라인에서 확인합니다. 확대·태그 필터·기록 저장을 지원하며 저장본은 게임이나 브라우저에서 볼 수 있습니다.\n\n/feedbackflag 또는 /ff로 메뉴를 엽니다. 메뉴 열기와 플래그 꽂기 단축키는 기본 미지정입니다. 서버 설치는 필요하지 않습니다.",
   "feedback_flag.bulk.title": "여러 플래그 편집",
   "feedback_flag.bulk.hint": "%s개 선택 · 바꿀 항목만 지정하세요. 이름·메모는 유지됩니다.",
   "feedback_flag.bulk.color": "색상: %s",

@@ -3,7 +3,7 @@
   "id": "feedback_flag",
   "version": "${version}",
   "name": "Feedback Flag",
-  "description": "Pin personal flags to blocks and record changes to block types and states. Includes flags and block outlines, names, colors, tags, memos, search, undo for the last deletion, and a timeline starting at tick 0 for the first change. Open with /feedbackflag or /ff. Menu and placement shortcuts are unbound by default. Client-only: no server installation required; records only block updates received by your client.",
+  "description": "Track block changes with personal flags and a timeline starting at tick 0. Zoom, filter, and save records to view in-game or in a browser. Open with /feedbackflag or /ff. Menu and placement shortcuts are unbound by default. Client-only; no server installation required.",
   "authors": [
     "RUOK0214"
   ],

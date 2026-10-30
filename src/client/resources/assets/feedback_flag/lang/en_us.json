@@ -149,7 +149,7 @@
   "feedback_flag.undo.conflict": "A new flag occupies a restore position. Undo cannot overwrite it.",
   "feedback_flag.undo.limit": "Restoring would exceed the 128-flag limit. The deletion is still retained.",
   "modmenu.summaryTranslation.feedback_flag": "Watch block changes with flags and a relative-tick timeline.",
-  "modmenu.descriptionTranslation.feedback_flag": "Pin personal flags to blocks and record changes to block types and states. Includes flags and block outlines, names, colors, tags, memos, search, undo for the last deletion, and a timeline starting at tick 0 for the first change.\n\nOpen with /feedbackflag or /ff. Menu and placement shortcuts are unbound by default. Client-only: no server installation required; records only block updates received by your client.",
+  "modmenu.descriptionTranslation.feedback_flag": "Track block changes with personal flags and a timeline starting at tick 0. Zoom, filter, and save records to view in-game or in a browser. Open with /feedbackflag or /ff. Menu and placement shortcuts are unbound by default. Client-only; no server installation required.",
   "feedback_flag.bulk.title": "Edit selected flags",
   "feedback_flag.bulk.hint": "%s selected · Choose fields to change. Names and memos stay intact.",
   "feedback_flag.bulk.color": "Color: %s",
