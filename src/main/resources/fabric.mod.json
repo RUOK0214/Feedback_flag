@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "feedback_flag",
+  "version": "${version}",
+  "name": "Feedback Flag",
+  "description": "Track block changes with personal flags and a timeline starting at tick 0. Zoom, filter, and save records to view in-game or in a browser. Open with /feedbackflag or /ff. Menu and placement shortcuts are unbound by default. Client-only; no server installation required.",
+  "authors": [
+    "RUOK0214"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "contact": {
+    "sources": "https://github.com/RUOK0214/Feedback_flag"
+  },
+  "entrypoints": {
+    "client": [
+      "io.github.ruok0214.feedbackflag.FeedbackFlagClient"
+    ]
+  },
+  "mixins": [
+    "feedback_flag.client.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "26.2",
+    "java": ">=25",
+    "fabric-api": ">=0.160.0+26.2"
+  },
+  "icon": "assets/feedback_flag/icon.png"
+}

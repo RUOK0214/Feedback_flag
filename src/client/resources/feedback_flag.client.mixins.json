@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "io.github.ruok0214.feedbackflag.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": ["ClientLevelMixin", "MinecraftMixin"],
+  "injectors": { "defaultRequire": 1 }
+}
